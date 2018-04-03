@@ -19,8 +19,6 @@
 #include "config.h"
 #endif
 
-#ifdef HAVE_LIBKRB5
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -397,5 +395,3 @@ krb5_get_output_token_buffer(struct private_auth_data *auth_data)
 {
         return auth_data->output_token.value;
 }
-
-#endif /* HAVE_LIBKRB5 */

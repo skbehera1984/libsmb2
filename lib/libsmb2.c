@@ -81,11 +81,8 @@
 
 #endif
 
-#ifndef HAVE_LIBKRB5
 #include "ntlmssp.h"
-#else
 #include "krb5-wrapper.h"
-#endif
 
 /* strings used to derive SMB signing and encryption keys */
 static const char SMB2AESCMAC[] = "SMB2AESCMAC";
@@ -462,11 +459,11 @@ static void
 free_c_data(struct smb2_context *smb2, struct connect_data *c_data)
 {
         if (c_data->auth_data) {
-#ifndef HAVE_LIBKRB5
-                ntlmssp_destroy_context(c_data->auth_data);
-#else
-                krb5_free_auth_data(c_data->auth_data);
-#endif
+                if (smb2->sec == SMB2_SEC_KRB5) {
+                        krb5_free_auth_data(c_data->auth_data);
+                } else {
+                        ntlmssp_destroy_context(c_data->auth_data);
+                }
         }
 
         free(c_data->utf8_unc);
@@ -581,8 +578,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
                         return;
                 }
                 return;
-#ifdef HAVE_LIBKRB5
-        } else {
+        } else if (smb2->sec == SMB2_SEC_KRB5) {
                 /* For NTLM the status will be
                  * SMB2_STATUS_MORE_PROCESSING_REQUIRED and a second call to
                  * gss_init_sec_context will complete the gss session.
@@ -596,7 +592,6 @@ session_setup_cb(struct smb2_context *smb2, int status,
                         free_c_data(smb2, c_data);
                         return;
                 }
-#endif
         }
 
         if (status != SMB2_STATUS_SUCCESS) {
@@ -612,17 +607,18 @@ session_setup_cb(struct smb2_context *smb2, int status,
         if (smb2->signing_required) {
                 uint8_t zero_key[SMB2_KEY_SIZE] = {0};
                 int have_valid_session_key = 1;
-#ifdef HAVE_LIBKRB5
-                if (krb5_session_get_session_key(smb2, c_data->auth_data) < 0) {
-                        have_valid_session_key = 0;
-                }
-#else
-                if (ntlmssp_get_session_key(c_data->auth_data,
+
+                if (smb2->sec == SMB2_SEC_KRB5) {
+                        if (krb5_session_get_session_key(smb2, c_data->auth_data) < 0) {
+                                have_valid_session_key = 0;
+                        }
+                } else if (smb2->sec == SMB2_SEC_NTLMSSP) {
+                        if (ntlmssp_get_session_key(c_data->auth_data,
                                             &smb2->session_key,
                                             &smb2->session_key_size) < 0) {
-                        have_valid_session_key = 0;
+                                have_valid_session_key = 0;
+                        }
                 }
-#endif
                 /* check if the session key is proper */
                 if (smb2->session_key == NULL || memcmp(smb2->session_key, zero_key, SMB2_KEY_SIZE) == 0) {
                         have_valid_session_key = 0;
@@ -701,24 +697,21 @@ send_session_setup_request(struct smb2_context *smb2,
         memset(&req, 0, sizeof(struct smb2_session_setup_request));
         req.security_mode = smb2->security_mode;
 
-#ifndef HAVE_LIBKRB5
-        if (ntlmssp_generate_blob(smb2, c_data->auth_data, buf, len,
-                                  &req.security_buffer,
-                                  &req.security_buffer_length) < 0) {
-                smb2_close_context(smb2);
-                return -1;
+        if (smb2->sec == SMB2_SEC_KRB5) {
+                if (krb5_session_request(smb2, c_data->auth_data, buf, len) < 0) {
+                        smb2_close_context(smb2);
+                        return -1;
+                }
+                req.security_buffer_length = krb5_get_output_token_length(c_data->auth_data);
+                req.security_buffer = krb5_get_output_token_buffer(c_data->auth_data);
+        } else {
+                if (ntlmssp_generate_blob(smb2, c_data->auth_data, buf, len,
+                                          &req.security_buffer,
+                                          &req.security_buffer_length) < 0) {
+                        smb2_close_context(smb2);
+                        return -1;
+                }
         }
-#else
-        if (krb5_session_request(smb2, c_data->auth_data,
-                                 buf, len) < 0) {
-                smb2_close_context(smb2);
-                return -1;
-        }
-        req.security_buffer_length =
-                krb5_get_output_token_length(c_data->auth_data);
-        req.security_buffer =
-                krb5_get_output_token_buffer(c_data->auth_data);
-#endif
 
         pdu = smb2_cmd_session_setup_async(smb2, &req,
                                            session_setup_cb, c_data);
@@ -772,19 +765,19 @@ negotiate_cb(struct smb2_context *smb2, int status,
                 smb2->signing_required = 1;
         }
 
-#ifndef HAVE_LIBKRB5
-        c_data->auth_data = ntlmssp_init_context(smb2->user,
-                                                 smb2->password,
-                                                 smb2->domain,
-                                                 smb2->workstation,
-                                                 smb2->client_challenge);
-#else
-        c_data->auth_data = krb5_negotiate_reply(smb2,
-                                                 c_data->server,
-                                                 smb2->domain,
-                                                 c_data->user,
-                                                 smb2->password);
-#endif
+        if (smb2->sec == SMB2_SEC_KRB5) {
+                c_data->auth_data = krb5_negotiate_reply(smb2,
+                                                         c_data->server,
+                                                         smb2->domain,
+                                                         c_data->user,
+                                                         smb2->password);
+        } else {
+                c_data->auth_data = ntlmssp_init_context(smb2->user,
+                                                         smb2->password,
+                                                         smb2->domain,
+                                                         smb2->workstation,
+                                                         smb2->client_challenge);
+        }
         if (c_data->auth_data == NULL) {
                 smb2_close_context(smb2);
                 c_data->cb(smb2, -ENOMEM, NULL, c_data->cb_data);
@@ -819,6 +812,13 @@ connect_cb(struct smb2_context *smb2, int status,
         memset(&req, 0, sizeof(struct smb2_negotiate_request));
         req.capabilities = SMB2_GLOBAL_CAP_LARGE_MTU;
         req.security_mode = smb2->security_mode;
+
+        /* use these by default */
+        if (smb2->sec == SMB2_SEC_KRB5) {
+                smb2->use_cached_creds = 1;
+        }
+        smb2->version = SMB2_VERSION_ANY;
+
         switch (smb2->version) {
         case SMB2_VERSION_ANY:
                 req.dialect_count = 4;

@@ -19,8 +19,6 @@
 #include "config.h"
 #endif
 
-#ifdef HAVE_LIBKRB5
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -91,5 +89,3 @@ krb5_set_gss_error(struct smb2_context *smb2, char *func,
 #endif
 
 #endif /* _KRB5_WRAPPER_H_ */
-
-#endif /* HAVE_LIBKRB5 */

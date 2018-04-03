@@ -19,8 +19,6 @@
 #include "config.h"
 #endif
 
-#ifndef HAVE_LIBKRB5
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -561,4 +559,3 @@ ntlmssp_get_session_key(struct auth_data *auth,
 
         return 0;
 }
-#endif /* HAVE_LIBKRB5 */

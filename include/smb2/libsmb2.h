@@ -148,6 +148,14 @@ void smb2_set_workstation(struct smb2_context *smb2, const char *workstation);
  */
 const char *smb2_get_client_guid(struct smb2_context *smb2);
 
+enum smb2_sec {
+        SMB2_SEC_UNDEFINED = 0,
+        SMB2_SEC_NTLMSSP,
+        SMB2_SEC_KRB5,
+};
+
+void smb2_set_auth_mode(struct smb2_context *smb2, enum smb2_sec mode);
+
 /*
  * Asynchronous call to connect a TCP connection to the server
  *

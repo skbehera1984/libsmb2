@@ -435,3 +435,8 @@ void smb2_set_workstation(struct smb2_context *smb2, const char *workstation)
         }
         smb2->workstation = strdup(workstation);
 }
+
+void smb2_set_auth_mode(struct smb2_context *smb2, enum smb2_sec mode)
+{
+        smb2->sec = mode;
+}
