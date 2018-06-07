@@ -642,6 +642,7 @@ struct smb2_ace {
 
 struct smb2_acl {
         uint8_t revision;
+        uint16_t acl_size;
         uint16_t ace_count;
         struct smb2_ace *aces;
 };

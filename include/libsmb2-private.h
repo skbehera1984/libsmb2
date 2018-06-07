@@ -246,6 +246,7 @@ void smb2_set_error(struct smb2_context *smb2, const char *error_string,
 
 void *smb2_alloc_init(struct smb2_context *smb2, size_t size);
 void *smb2_alloc_data(struct smb2_context *smb2, void *memctx, size_t size);
+void smb2_free_data(struct smb2_context *smb2, void *ptr);
 
 struct smb2_iovec *smb2_add_iovector(struct smb2_context *smb2,
                                      struct smb2_io_vectors *v,
@@ -342,10 +343,22 @@ int smb2_decode_file_all_info(struct smb2_context *smb2,
                               struct smb2_file_all_info *fs,
                               struct smb2_iovec *vec);
 
+uint32_t smb2_get_sid_size(struct smb2_sid *sid);
+uint32_t smb2_get_ace_size(struct smb2_ace *ace);
+uint32_t smb2_get_acl_size(struct smb2_acl *acl);
+uint32_t smb2_get_security_descriptor_size(const struct smb2_security_descriptor *sd);
+
 int smb2_decode_security_descriptor(struct smb2_context *smb2,
                                     void *memctx,
                                     struct smb2_security_descriptor *sd,
                                     struct smb2_iovec *vec);
+
+int smb2_encode_security_descriptor(struct smb2_context *smb2,
+                                    const struct smb2_security_descriptor *sd,
+                                    uint8_t *encoded_sec,
+                                    uint32_t *encoded_sec_len);
+
+void print_security_descriptor(struct smb2_security_descriptor *sd);
 
 int smb2_decode_file_fs_size_info(struct smb2_context *smb2,
                                   void *memctx,
