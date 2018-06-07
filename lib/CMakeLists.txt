@@ -31,7 +31,8 @@ set(SOURCES alloc.c
             socket.c
             sync.c
             timestamps.c
-            unicode.c)
+            unicode.c
+            dcerpc.c)
 
 if(OPENSSL_FOUND)
   list(APPEND SOURCES smb2-signing.c)

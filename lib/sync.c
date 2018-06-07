@@ -47,6 +47,7 @@
 #include "libsmb2.h"
 #include "libsmb2-raw.h"
 #include "libsmb2-private.h"
+#include "dcerpc.h"
 
 struct sync_cb_data {
 	int is_finished;
@@ -774,4 +775,198 @@ struct smb2fh *smb2_open_pipe(struct smb2_context *smb2, const char *pipe)
         }
 
         return cb_data.ptr;
+}
+
+/* share_enum()
+ */
+int smb2_list_shares(struct smb2_context *smb2,
+                     const char *server,
+                     const char *user,
+                     struct smb2_shareinfo **shares,
+                     int *numshares
+                    )
+{
+        int status = 0;
+        struct smb2fh *fh = NULL;
+        uint8_t write_buf[1024] = {0};
+        uint32_t write_count = 0;
+        uint8_t read_buf[1024] ={0};
+        struct rpc_bind_request bind_req;
+        struct context_item dcerpc_ctx;
+
+        struct rpc_header rsp_hdr;
+        struct rpc_bind_response ack;
+        struct rpc_bind_nack_response nack;
+
+        char serverName[4096] = {0};
+
+        if (server == NULL) {
+                smb2_set_error(smb2, "smb2_list_shares:server not specified");
+                return -1;
+        }
+        if (user == NULL) {
+                smb2_set_error(smb2, "smb2_list_shares:user not specified");
+                return -1;
+        }
+
+        if (shares == NULL || numshares == NULL) {
+                smb2_set_error(smb2, "smb2_list_shares:No memory allocated for share listing");
+                return -1;
+        }
+
+        smb2->use_cached_creds = 1;
+        if (smb2_connect_share(smb2, server, "IPC$", user) !=0) {
+                smb2_set_error(smb2, "smb2_connect_share_async failed. %s",
+                               smb2_get_error(smb2));
+                return -ENOMEM;
+        }
+
+        fh = smb2_open_pipe(smb2, "srvsvc");
+        if (fh == NULL) {
+                smb2_set_error(smb2, "smb2_list_shares: failed to open SRVSVC pipe: %s",
+                               smb2_get_error(smb2));
+                return -1;
+        }
+
+        dcerpc_create_bind_req(&bind_req, 1);
+        dcerpc_init_context(&dcerpc_ctx, 1,
+                            INTERFACE_VERSION_MAJOR,
+                            INTERFACE_VERSION_MINOR,
+                            TRANSFER_SYNTAX_VERSION_MAJOR,
+                            TRANSFER_SYNTAX_VERSION_MINOR);
+
+        write_count = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
+        memcpy(write_buf, &bind_req, sizeof(struct rpc_bind_request));
+        memcpy(write_buf+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
+        status = smb2_write(smb2, fh, write_buf, write_count);
+        if (status < 0) {
+                smb2_set_error(smb2, "failed to send dcerpc bind request");
+                return -1;
+        }
+
+        status = smb2_read(smb2, fh, read_buf, 1024);
+        if (status < 0) {
+                smb2_set_error(smb2, "dcerpc bind failed");
+                return -1;
+        }
+
+        if (dcerpc_get_response_header(read_buf, status, &rsp_hdr) < 0) {
+                smb2_set_error(smb2, "failed to parse dcerpc response header");
+                return -1;
+        }
+
+        if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
+                if (dcerpc_get_bind_nack_response(read_buf, status, &nack) < 0) {
+                        smb2_set_error(smb2, "failed to parse dcerpc BINDNACK response");
+                        return -1;
+                }
+                smb2_set_error(smb2, "dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
+                return -1;
+        } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
+                if (dcerpc_get_bind_ack_response(read_buf, status, &ack) < 0) {
+                        smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
+                        return -1;
+                }
+        }
+
+        if (sprintf(&serverName[0], "\\\\%s", server) < 0) {
+                smb2_set_error(smb2, "Failed to create NetrShareEnum request");
+                return -1;
+        }
+
+        uint32_t resumeHandle = 0;
+        uint32_t shares_read = 0;
+        uint32_t total_share_count = 0;
+
+        do {
+                /* we need to do this in loop till we get all shares */
+                uint32_t srvs_sts = 0;
+                uint8_t  netShareEnumBuf[1024] = {0};
+                uint32_t netShareEnumBufLen = 1024;
+                struct NetrShareEnumRequest *srvs_req = NULL;
+                uint32_t payloadlen = 0;
+                uint32_t offset = 0;
+
+                uint8_t  output_buf[64*1024];
+                uint32_t output_count = 64 * 4096;
+                uint8_t  *resp = NULL;
+                uint32_t share_count = 0;
+
+                struct NetrShareEnumResponse dce_rep = {{0}};
+
+                payloadlen = netShareEnumBufLen;
+                srvs_req = (struct NetrShareEnumRequest *)&netShareEnumBuf[0];
+                payloadlen -= sizeof(struct NetrShareEnumRequest);
+                offset += sizeof(struct NetrShareEnumRequest);
+
+                if (dcerpc_create_NetrShareEnumRequest_payload(smb2,
+                               serverName,
+                               resumeHandle,
+                               netShareEnumBuf+offset,
+                               &payloadlen) < 0) {
+                        return -1;
+                }
+
+                offset += payloadlen;
+                dcerpc_create_NetrShareEnumRequest(smb2, srvs_req, payloadlen);
+
+                status = smb2_ioctl(smb2, fh,
+                                    FSCTL_PIPE_TRANSCEIVE,
+                                    SMB2_0_IOCTL_IS_FSCTL,
+                                    netShareEnumBuf, offset,
+                                    output_buf, &output_count);
+                if (status < 0) {
+                        smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed : %s",
+                                       smb2_get_error(smb2));
+                        return -1;
+                }
+
+                /* Response parsing */
+                resp = &output_buf[0];
+                offset = 0;
+                payloadlen = output_count;
+
+                if (dcerpc_parse_NetrShareEnumResponse(smb2,
+                                                       resp,
+                                                       payloadlen,
+                                                       &dce_rep) < 0) {
+                        smb2_set_error(smb2,
+                                       "dcerpc_parse_NetrShareEnumResponse failed : %s",
+                                       smb2_get_error(smb2));
+                        return -1;
+                }
+                offset += sizeof(struct NetrShareEnumResponse);
+                payloadlen -= sizeof(struct NetrShareEnumResponse);
+
+                srvs_sts = srvsvc_get_NetrShareEnum_status(smb2,
+                                                           resp+offset,
+                                                           payloadlen);
+                if ( srvs_sts != 0x00000000 ) {
+                        smb2_set_error(smb2,
+                                       "SRVSVC NetrShareEnum Failed with error %x",
+                                       srvs_sts);
+                        break;
+                }
+                payloadlen -= sizeof(uint32_t);
+
+                if (srvsvc_parse_NetrShareEnum_payload(smb2,
+                                                       resp+offset,
+                                                       payloadlen,
+                                                       &share_count,
+                                                       &total_share_count,
+                                                       &resumeHandle,
+                                                       shares) < 0) {
+                        smb2_set_error(smb2,
+                                       "srvsvc_parse_NetrShareEnum_payload failed : %s",
+                                       smb2_get_error(smb2));
+                        return -1;
+                }
+                shares_read += share_count;
+
+        } while (shares_read < total_share_count);
+
+        /* close the pipe  & disconnect */
+        smb2_close(smb2, fh);
+        smb2_disconnect_share(smb2);
+        return status;
 }

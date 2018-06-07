@@ -86,3 +86,4 @@ smb2_ioctl
 smb2_ioctl_async
 smb2_open_pipe
 smb2_open_pipe_async
+smb2_list_shares

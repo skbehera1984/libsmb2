@@ -41,7 +41,8 @@ libsmb2_la_SOURCES = \
 	socket.c \
 	sync.c \
 	timestamps.c \
-	unicode.c
+	unicode.c \
+	dcerpc.c
 
 SOCURRENT=1
 SOREVISION=0

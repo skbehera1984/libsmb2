@@ -923,6 +923,33 @@ int smb2_open_pipe_async(struct smb2_context *smb2,
 struct smb2fh *smb2_open_pipe(struct smb2_context *smb2,
                               const char *pipe);
 
+#define SHARE_STYPE_DISKTREE    0x00000000
+#define SHARE_STYPE_PRINTQ      0x00000001
+#define SHARE_STYPE_DEVICE      0x00000002
+#define SHARE_STYPE_IPC         0x00000003
+#define SHARE_STYPE_TEMPORARY   0x40000000
+#define SHARE_STYPE_SPECIAL     0x80000000
+#define SHARE_STYPE_UNKNOWN     0xFFFFFFFF
+
+struct smb2_shareinfo {
+        char     *name;
+        uint32_t type;
+        char     *remark;
+        struct smb2_shareinfo *next;
+};
+
+/*
+ * Sync list_shares()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ */
+int smb2_list_shares(struct smb2_context *smb2,
+                     const char *server,
+                     const char *user,
+                     struct smb2_shareinfo **shares,
+                     int *numshares);
+
 #ifdef __cplusplus
 }
 #endif

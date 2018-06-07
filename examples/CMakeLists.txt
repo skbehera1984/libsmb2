@@ -12,7 +12,8 @@ set(SOURCES smb2-cat-async
             smb2-raw-getsd-async
             smb2-share-enum
             smb2-stat-sync
-            smb2-truncate-sync)
+            smb2-truncate-sync
+            smb2-sharelist)
 
 foreach(TARGET ${SOURCES})
   add_executable(${TARGET} ${TARGET}.c)
