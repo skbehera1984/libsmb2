@@ -805,6 +805,66 @@ int smb2_echo_async(struct smb2_context *smb2,
  */
 int smb2_echo(struct smb2_context *smb2);
 
+/*
+ * Async get_security()
+ *
+ * Returns
+ *  0     : The operation was initiated. Result of the operation will be
+ *          reported through the callback function.
+ * -errno : There was an error. The callback function will not be invoked.
+ *
+ * When the callback is invoked, status indicates the result:
+ *      0 : Success.
+ * -errno : An error occured.
+ */
+int smb2_get_security_async(struct smb2_context *smb2,
+                            const char *path,
+                            struct smb2_security_descriptor **sd,
+                            smb2_command_cb cb,
+                            void *cb_data);
+
+/*
+ * Sync get_security()
+ *
+ * Returns:
+ * 0      : successfully send the message and received a reply.
+ * -errno : Failure.
+ */
+int smb2_get_security(struct smb2_context *smb2,
+                      const char *path,
+                      uint8_t **buf,
+                      uint32_t *buf_len);
+/*
+ * Async set_security()
+ *
+ * Returns
+ *  0     : The operation was initiated. Result of the operation will be
+ *          reported through the callback function.
+ * -errno : There was an error. The callback function will not be invoked.
+ *
+ * When the callback is invoked, status indicates the result:
+ *      0 : Success.
+ * -errno : An error occured.
+ */
+int smb2_set_security_async(struct smb2_context *smb2,
+                            const char *path,
+                            uint8_t *buf,
+                            uint32_t buf_len,
+                            smb2_command_cb cb,
+                            void *cb_data);
+
+/*
+ * Sync set_security()
+ *
+ * Returns:
+ * 0      : successfully send the message and received a reply.
+ * -errno : Failure.
+ */
+int smb2_set_security(struct smb2_context *smb2,
+                      const char *path,
+                      uint8_t *buf,
+                      uint32_t buf_len);
+
 #ifdef __cplusplus
 }
 #endif

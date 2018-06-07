@@ -33,6 +33,7 @@
 
 #include <errno.h>
 #include <poll.h>
+#include <stdio.h>
 
 #include "smb2.h"
 #include "libsmb2.h"
@@ -557,3 +558,126 @@ int smb2_echo(struct smb2_context *smb2)
     return cb_data.status;
 }
 
+//#define DEBUG
+
+int
+smb2_get_security(struct smb2_context *smb2,
+                  const char *path,
+                  uint8_t **buf,
+                  uint32_t *buf_len)
+{
+        int sts = 0;
+        struct sync_cb_data cb_data;
+        struct smb2_security_descriptor *sd = NULL;
+
+        uint8_t *relative_sec = NULL;
+        uint32_t relative_sec_size = 1024;
+
+        if (smb2->is_connected == 0)
+        {
+                smb2_set_error(smb2, "Not Connected to Server");
+                return -ENOMEM;
+        }
+
+        cb_data.is_finished = 0;
+
+        if (smb2_get_security_async(smb2, path, &sd,
+                                    generic_status_cb, &cb_data) != 0)
+        {
+                smb2_set_error(smb2, "smb2_get_security_async failedi : %s",
+                               smb2_get_error(smb2));
+                return -ENOMEM;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0)
+        {
+                return -EIO;
+        }
+
+#ifdef DEBUG
+        print_security_descriptor(sd);
+#endif
+
+        relative_sec = (uint8_t *) calloc(1, relative_sec_size);
+        if (relative_sec == NULL) {
+                smb2_set_error(smb2, "smb2_get_security: No memory to get security descriptor");
+                return -ENOMEM;
+        }
+retry:
+        if ((sts = smb2_encode_security_descriptor(smb2, sd,
+                                                   relative_sec,
+                                                   &relative_sec_size)) < 0) {
+                if (sts == -9) {
+                        relative_sec_size *= 2;
+                        relative_sec = (uint8_t *) realloc(relative_sec, relative_sec_size);
+                        if (relative_sec == NULL) {
+                                smb2_set_error(smb2, "smb2_get_security: failed to allocate memory");
+                                return -ENOMEM;
+                        }
+                        goto retry;
+                }
+
+                smb2_set_error(smb2, "smb2_get_security: "
+                                     "failed to encode security descriptor : %s",
+                                     smb2_get_error(smb2));
+                return -ENOMEM;
+        }
+
+        smb2_free_data(smb2, sd); sd = NULL;
+
+        *buf = relative_sec;
+        *buf_len = relative_sec_size;
+
+        return cb_data.status;
+}
+
+int
+smb2_set_security(struct smb2_context *smb2,
+                  const char *path,
+                  uint8_t *buf,
+                  uint32_t buf_len)
+{
+        struct sync_cb_data cb_data;
+
+        if (smb2->is_connected == 0)
+        {
+                smb2_set_error(smb2, "Not Connected to Server");
+                return -ENOMEM;
+        }
+
+        cb_data.is_finished = 0;
+
+#ifdef DEBUG
+        struct smb2_iovec vec;
+        struct smb2_security_descriptor *secdesc = NULL;
+        vec.buf = buf;
+        vec.len = buf_len;
+
+        secdesc = (struct smb2_security_descriptor *)
+                          smb2_alloc_init(smb2, sizeof(struct smb2_security_descriptor));
+        if (smb2_decode_security_descriptor(smb2, secdesc, secdesc, &vec)) {
+                smb2_set_error(smb2, "could not decode security "
+                                      "descriptor. %s",
+                               smb2_get_error(smb2));
+                return -1;
+        }
+        print_security_descriptor(secdesc);
+        smb2_free_data(smb2, secdesc); secdesc = NULL;
+#endif
+
+        if (smb2_set_security_async(smb2, path, buf, buf_len,
+                                    generic_status_cb, &cb_data) != 0)
+        {
+                smb2_set_error(smb2, "smb2_set_security_async failed : %s",
+                               smb2_get_error(smb2));
+                return -ENOMEM;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0)
+        {
+                return -EIO;
+        }
+
+
+        return cb_data.status;
+}

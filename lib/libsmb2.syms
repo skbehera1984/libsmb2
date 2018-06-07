@@ -78,3 +78,7 @@ smb2_write
 smb2_write_async
 smb2_echo
 smb2_echo_async
+smb2_get_security
+smb2_get_security_async
+smb2_set_security
+smb2_set_security_async

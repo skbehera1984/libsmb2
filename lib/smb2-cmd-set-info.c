@@ -46,6 +46,7 @@
 #include "libsmb2-private.h"
 
 #include <stdio.h>
+
 static int
 smb2_encode_set_info_request(struct smb2_context *smb2,
                              struct smb2_pdu *pdu,
@@ -140,6 +141,25 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         return -1;
                 }
                 break;
+        case SMB2_0_INFO_SECURITY:
+        {
+                struct smb2_file_security_info *info = NULL;
+
+                info = (struct smb2_file_security_info*)req->input_data;
+
+                smb2_set_uint32(iov, 4, info->secbuf_len); /* buffer length */
+
+                buf = malloc(info->secbuf_len);
+                if (buf == NULL) {
+                        smb2_set_error(smb2, "Failed to allocate set "
+                                             "info data buffer");
+                        return -1;
+                }
+                memset(buf, 0, info->secbuf_len);
+                iov = smb2_add_iovector(smb2, &pdu->out, buf, info->secbuf_len, free);
+                memcpy(iov->buf, info->secbuf, info->secbuf_len);
+        }
+        break;
         default:
                 smb2_set_error(smb2, "Can not encode file info_type %d yet",
                                req->info_type);

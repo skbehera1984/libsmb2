@@ -2167,3 +2167,268 @@ smb2_get_max_write_size(struct smb2_context *smb2)
 {
         return smb2->max_write_size;
 }
+
+struct security_cb_data {
+        smb2_command_cb cb;
+        void *cb_data;
+
+        uint32_t status;
+        struct smb2_security_descriptor **p_sd; /*user needs to free it*/
+};
+
+static void
+sec_create_cb(struct smb2_context *smb2, int status,
+              void *command_data _U_, void *private_data)
+{
+        struct security_cb_data *sec_data = private_data;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "Open failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                sec_data->cb(smb2, -nterror_to_errno(status), NULL, sec_data->cb_data);
+                sec_data->status = status;
+                return;
+        }
+        sec_data->status = status;
+}
+
+static void
+sec_query_cb(struct smb2_context *smb2, int status,
+             void *command_data, void *private_data)
+{
+        struct security_cb_data *sec_data = private_data;
+        struct smb2_query_info_reply *rep = command_data;
+        struct smb2_security_descriptor *sd = rep->output_buffer;
+
+        if (sec_data->status != SMB2_STATUS_SUCCESS) {
+                return;
+        }
+        sec_data->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "QueryInfo failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                sec_data->cb(smb2, -nterror_to_errno(status), NULL, sec_data->cb_data);
+                return;
+        }
+        *sec_data->p_sd = sd;
+}
+
+static void
+sec_set_cb(struct smb2_context *smb2, int status,
+           void *command_data, void *private_data)
+{
+        struct security_cb_data *sec_data = private_data;
+
+        if (sec_data->status != SMB2_STATUS_SUCCESS) {
+                return;
+        }
+        sec_data->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "SetInfo failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                sec_data->cb(smb2, -nterror_to_errno(status), NULL, sec_data->cb_data);
+                return;
+        }
+
+        sec_data->cb(smb2, -nterror_to_errno(sec_data->status),
+                     NULL, sec_data->cb_data);
+}
+
+static void
+sec_close_cb(struct smb2_context *smb2, int status,
+             void *command_data _U_, void *private_data)
+{
+        struct security_cb_data *sec_data = private_data;
+
+        if (sec_data->status != SMB2_STATUS_SUCCESS) {
+                return;
+        }
+        sec_data->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "CloseFile failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                sec_data->cb(smb2, -nterror_to_errno(status), NULL, sec_data->cb_data);
+                return;
+        }
+
+        sec_data->cb(smb2, -nterror_to_errno(sec_data->status),
+                     NULL, sec_data->cb_data);
+        free(sec_data);
+}
+
+int
+smb2_get_security_async(struct smb2_context *smb2,
+                        const char *path,
+                        struct smb2_security_descriptor **sd,
+                        smb2_command_cb cb,
+                        void *cb_data)
+{
+        struct security_cb_data *sec_data;
+        struct smb2_create_request cr_req;
+        struct smb2_query_info_request qi_req;
+        struct smb2_close_request cl_req;
+        struct smb2_pdu *pdu, *next_pdu;
+
+        sec_data = malloc(sizeof(struct security_cb_data));
+        if (sec_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate create_data");
+                return -1;
+        }
+        memset(sec_data, 0, sizeof(struct security_cb_data));
+
+        sec_data->cb = cb;
+        sec_data->cb_data = cb_data;
+        sec_data->p_sd= sd;
+
+        /* CREATE command */
+        memset(&cr_req, 0, sizeof(struct smb2_create_request));
+        cr_req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
+        cr_req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
+        cr_req.desired_access = SMB2_READ_CONTROL;
+        cr_req.file_attributes = 0;
+        cr_req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
+        cr_req.create_disposition = SMB2_FILE_OPEN;
+        cr_req.create_options = 0;
+        cr_req.name = path;
+
+        pdu = smb2_cmd_create_async(smb2, &cr_req, sec_create_cb, sec_data);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create create command");
+                free(sec_data);
+                return -1;
+        }
+
+        /* QUERY INFO command */
+        memset(&qi_req, 0, sizeof(struct smb2_query_info_request));
+        qi_req.info_type = SMB2_0_INFO_SECURITY;
+        qi_req.output_buffer_length = 65535;
+        qi_req.additional_information =
+                SMB2_OWNER_SECURITY_INFORMATION |
+                SMB2_GROUP_SECURITY_INFORMATION |
+                SMB2_DACL_SECURITY_INFORMATION;
+        memcpy(qi_req.file_id, compound_file_id, SMB2_FD_SIZE);
+
+        next_pdu = smb2_cmd_query_info_async(smb2, &qi_req,
+                                             sec_query_cb, sec_data);
+        if (next_pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create query command");
+                free(sec_data);
+                smb2_free_pdu(smb2, pdu);
+                return -1;
+        }
+        smb2_add_compound_pdu(smb2, pdu, next_pdu);
+
+        /* CLOSE command */
+        memset(&cl_req, 0, sizeof(struct smb2_close_request));
+        cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
+        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+
+        next_pdu = smb2_cmd_close_async(smb2, &cl_req, sec_close_cb, sec_data);
+        if (next_pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create close command");
+                sec_data->cb(smb2, -ENOMEM, NULL, sec_data->cb_data);
+                free(sec_data);
+                smb2_free_pdu(smb2, pdu);
+                return -1;
+        }
+        smb2_add_compound_pdu(smb2, pdu, next_pdu);
+
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
+}
+
+int
+smb2_set_security_async(struct smb2_context *smb2,
+                        const char *path,
+                        uint8_t *buf,
+                        uint32_t buf_len,
+                        smb2_command_cb cb, void *cb_data)
+{
+        struct security_cb_data *sec_data;
+        struct smb2_create_request cr_req;
+        struct smb2_set_info_request si_req;
+        struct smb2_close_request cl_req;
+        struct smb2_pdu *pdu, *next_pdu;
+        struct smb2_file_security_info info;
+
+        if (buf == NULL) {
+                smb2_set_error(smb2, "no security data provided");
+                return -1;
+        }
+
+        sec_data = malloc(sizeof(struct security_cb_data));
+        if (sec_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate sec_data");
+                return -1;
+        }
+        memset(sec_data, 0, sizeof(struct security_cb_data));
+
+        sec_data->cb = cb;
+        sec_data->cb_data = cb_data;
+
+        /* CREATE command */
+        memset(&cr_req, 0, sizeof(struct smb2_create_request));
+        cr_req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
+        cr_req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
+        cr_req.desired_access = SMB2_WRITE_DACL | SMB2_WRITE_OWNER;
+        cr_req.file_attributes = 0;
+        cr_req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
+        cr_req.create_disposition = SMB2_FILE_OPEN;
+        cr_req.create_options = 0;
+        cr_req.name = path;
+
+        pdu = smb2_cmd_create_async(smb2, &cr_req, sec_create_cb, sec_data);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create create command");
+                free(sec_data);
+                return -1;
+        }
+
+        /* SET INFO command */
+        info.secbuf     = buf;
+        info.secbuf_len = buf_len;
+
+        memset(&si_req, 0, sizeof(struct smb2_set_info_request));
+        si_req.info_type = SMB2_0_INFO_SECURITY;
+        si_req.additional_information =
+                SMB2_OWNER_SECURITY_INFORMATION |
+                SMB2_GROUP_SECURITY_INFORMATION |
+                SMB2_DACL_SECURITY_INFORMATION;
+        memcpy(si_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        si_req.input_data = &info;
+
+        next_pdu = smb2_cmd_set_info_async(smb2, &si_req,
+                                           sec_set_cb, sec_data);
+        if (next_pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create set-info command. %s",
+                               smb2_get_error(smb2));
+                free(sec_data);
+                smb2_free_pdu(smb2, pdu);
+                return -1;
+        }
+        smb2_add_compound_pdu(smb2, pdu, next_pdu);
+
+        /* CLOSE command */
+        memset(&cl_req, 0, sizeof(struct smb2_close_request));
+        cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
+        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+
+        next_pdu = smb2_cmd_close_async(smb2, &cl_req, sec_close_cb, sec_data);
+        if (next_pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create close command. %s",
+                               smb2_get_error(smb2));
+                sec_data->cb(smb2, -ENOMEM, NULL, sec_data->cb_data);
+                free(sec_data);
+                smb2_free_pdu(smb2, pdu);
+                return -1;
+        }
+        smb2_add_compound_pdu(smb2, pdu, next_pdu);
+
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
+}

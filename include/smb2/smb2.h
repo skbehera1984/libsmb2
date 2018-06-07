@@ -548,6 +548,14 @@ struct smb2_file_rename_info {
         uint8_t *file_name;
 };
 
+/*
+ * SMB2_0_INFO_SECURITY.
+ */
+struct smb2_file_security_info {
+        uint8_t  *secbuf;
+        uint32_t secbuf_len;
+};
+
 #define SMB2_SET_INFO_REQUEST_SIZE 33
 
 struct smb2_set_info_request {
