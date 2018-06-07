@@ -681,3 +681,31 @@ smb2_set_security(struct smb2_context *smb2,
 
         return cb_data.status;
 }
+
+/*
+ * Send SMB2_IOCTL command to the server
+  */
+int smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
+               uint32_t ioctl_ctl, uint32_t ioctl_flags,
+               uint8_t *input_buffer, uint32_t input_count,
+               uint8_t *output_buffer, uint32_t *output_count)
+{
+        struct sync_cb_data cb_data;
+
+        cb_data.is_finished = 0;
+
+        if (smb2_ioctl_async(smb2, fh,
+                             ioctl_ctl, ioctl_flags,
+                             input_buffer, input_count,
+                             output_buffer, output_count,
+                             generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_ioctl_async failed : %s", smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
+}

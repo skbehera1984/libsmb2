@@ -59,7 +59,7 @@ enum smb2_command {
         SMB2_READ,
         SMB2_WRITE,
         /* SMB2_LOCK, */
-        /* SMB2_IOCTL, */
+        SMB2_IOCTL           = 11,
         /* SMB2_CANCEL, */
         SMB2_ECHO            = 13,
         SMB2_QUERY_DIRECTORY,
@@ -798,6 +798,59 @@ struct smb2_write_reply {
 
 #define SMB2_TREE_DISCONNECT_REQUEST_SIZE 4
 #define SMB2_TREE_DISCONNECT_REPLY_SIZE 4
+
+/* FSCTL/IOCTL flags */
+#define SMB2_0_IOCTL          0x00000000
+#define SMB2_0_IOCTL_IS_FSCTL 0x00000001
+
+/* control code of the FSCTL/IOCTL method */
+#define FSCTL_DFS_GET_REFERRALS            0x00060194
+#define FSCTL_PIPE_PEEK                    0x0011400C
+#define FSCTL_PIPE_WAIT                    0x00110018
+#define FSCTL_PIPE_TRANSCEIVE              0x0011C017
+#define FSCTL_SRV_COPYCHUNK                0x001440F2
+#define FSCTL_SRV_ENUMERATE_SNAPSHOTS      0x00144064
+#define FSCTL_SRV_REQUEST_RESUME_KEY       0x00140078
+#define FSCTL_SRV_READ_HASH                0x001441bb
+#define FSCTL_SRV_COPYCHUNK_WRITE          0x001480F2
+#define FSCTL_LMR_REQUEST_RESILIENCY       0x001401D4
+#define FSCTL_QUERY_NETWORK_INTERFACE_INFO 0x001401FC
+#define FSCTL_SET_REPARSE_POINT            0x000900A4
+#define FSCTL_DFS_GET_REFERRALS_EX         0x000601B0
+#define FSCTL_FILE_LEVEL_TRIM              0x00098208
+#define FSCTL_VALIDATE_NEGOTIATE_INFO      0x00140204
+
+#define SMB2_IOCTL_REQUEST_SIZE 57
+
+struct smb2_ioctl_request {
+        uint16_t reserved;
+        uint32_t ctl_code;
+        smb2_file_id file_id;
+        uint32_t input_offset;
+        uint32_t input_count;
+        uint32_t max_input_response;
+        uint32_t output_offset;
+        uint32_t output_count;
+        uint32_t max_output_response;
+        uint32_t flags;
+        uint32_t reserved2;
+        uint8_t* input_buffer;
+};
+
+#define SMB2_IOCTL_REPLY_SIZE 49
+
+struct smb2_ioctl_reply {
+        uint16_t reserved;
+        uint32_t ctl_code;
+        smb2_file_id file_id;
+        uint32_t input_offset;
+        uint32_t input_count;
+        uint32_t output_offset;
+        uint32_t output_count;
+        uint32_t flags;
+        uint32_t reserved2;
+        uint8_t* output_buffer;
+};
 
 #ifdef __cplusplus
 }

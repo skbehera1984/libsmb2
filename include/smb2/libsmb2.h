@@ -865,6 +865,37 @@ int smb2_set_security(struct smb2_context *smb2,
                       uint8_t *buf,
                       uint32_t buf_len);
 
+/*
+ * IOCTL
+ */
+/*
+ * Async ioctl()
+ *
+ * Returns
+ *  0     : The operation was initiated. Result of the operation will be
+ *          reported through the callback function.
+ * -errno : There was an error. The callback function will not be invoked.
+ *
+ * When the callback is invoked, status indicates the result:
+ *      0 : Success.
+ * -errno : An error occured.
+ *
+ * Command_data is always NULL.
+ */
+int smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
+                     uint32_t ioctl_ctl, uint32_t ioctl_flags,
+                     uint8_t *input_buffer, uint32_t input_count,
+                     uint8_t *output_buffer, uint32_t *output_count,
+                     smb2_command_cb cb, void *cb_data);
+
+/*
+ * Sync Ioctl()
+ */
+int smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
+                uint32_t ioctl_ctl, uint32_t ioctl_flags,
+               uint8_t *input_buffer, uint32_t input_count,
+               uint8_t *output_buffer, uint32_t *output_count);
+
 #ifdef __cplusplus
 }
 #endif

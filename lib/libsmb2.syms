@@ -82,3 +82,5 @@ smb2_get_security
 smb2_get_security_async
 smb2_set_security
 smb2_set_security_async
+smb2_ioctl
+smb2_ioctl_async

@@ -23,6 +23,7 @@ set(SOURCES alloc.c
             smb2-cmd-tree-connect.c
             smb2-cmd-tree-disconnect.c
             smb2-cmd-write.c
+            smb2-cmd-ioctl.c
             smb2-data-file-info.c
             smb2-data-filesystem-info.c
             smb2-data-security-descriptor.c

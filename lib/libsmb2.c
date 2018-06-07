@@ -2432,3 +2432,85 @@ smb2_set_security_async(struct smb2_context *smb2,
 
         return 0;
 }
+
+struct ioctl_data {
+        smb2_command_cb cb;
+        void *cb_data;
+
+        int status;
+        uint8_t  *output_buffer;
+        uint32_t *output_count;
+};
+
+static void
+ioctl_cb(struct smb2_context *smb2, int status,
+         void *command_data, void *private_data)
+{
+        struct ioctl_data *ioctl_d = private_data;
+
+        struct smb2_ioctl_reply *rep = command_data;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "IOCTL failed with (0x%08x) %s",
+                               status, nterror_to_str(status));
+                ioctl_d->cb(smb2, -nterror_to_errno(status), NULL, ioctl_d->cb_data);
+                free(ioctl_d);
+                return;
+        }
+
+        memcpy(ioctl_d->output_buffer, rep->output_buffer, rep->output_count);
+        *ioctl_d->output_count = rep->output_count;
+
+        ioctl_d->cb(smb2, status, NULL, ioctl_d->cb_data);
+        free(ioctl_d);
+}
+
+int
+smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
+                 uint32_t ioctl_ctl, uint32_t ioctl_flags,
+                 uint8_t *input_buffer, uint32_t input_count,
+                 uint8_t *output_buffer, uint32_t *output_count,
+                 smb2_command_cb cb, void *cb_data)
+{
+        struct smb2_ioctl_request req;
+        struct ioctl_data *ioctl_d;
+        struct smb2_pdu *pdu;
+
+        if (input_count > smb2->max_transact_size) {
+                smb2_set_error(smb2, "Ioctl count %d larger than "
+                               "max_transact_size %d", input_count,
+                               smb2->max_transact_size);
+                return -EIO;
+        }
+
+        ioctl_d = malloc(sizeof(struct ioctl_data));
+        if (ioctl_d == NULL) {
+                smb2_set_error(smb2, "Failed to allocate ioctl_data");
+                return -ENOMEM;
+        }
+        memset(ioctl_d, 0, sizeof(struct ioctl_data));
+
+        ioctl_d->cb = cb;
+        ioctl_d->cb_data = cb_data;
+        ioctl_d->output_buffer = output_buffer;
+        ioctl_d->output_count  = output_count;
+
+        memset(&req, 0, sizeof(struct smb2_ioctl_request));
+        req.ctl_code = ioctl_ctl;
+        req.input_count = input_count;
+        req.input_buffer = input_buffer;
+        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.flags = ioctl_flags;
+        req.max_input_response = 0;
+        req.max_output_response = 64 * 1024;
+
+        pdu = smb2_cmd_ioctl_async(smb2, &req, ioctl_cb, ioctl_d);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create ioctl command : %s",
+                               smb2_get_error(smb2));
+                return -ENOMEM;
+        }
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
+}
