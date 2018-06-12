@@ -233,7 +233,7 @@ struct ucs2 *utf8_to_ucs2(const char *utf8);
 /* Returns a string converted to UTF8 format. Use free() to release
  * the utf8 string.
  */
-const char *ucs2_to_utf8(const uint16_t *str, int len);
+char *ucs2_to_utf8(const uint16_t *str, int len);
 
 /* Convert a win timestamp to a unix timeval */
 void win_to_timeval(uint64_t smb2_time, struct smb2_timeval *tv);
