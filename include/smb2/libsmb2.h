@@ -931,6 +931,9 @@ struct smb2fh *smb2_open_pipe(struct smb2_context *smb2,
 #define SHARE_STYPE_SPECIAL     0x80000000
 #define SHARE_STYPE_UNKNOWN     0xFFFFFFFF
 
+#define SMB2_SHARE_NAME_MAX	257
+#define SMB2_SHARE_REMARK_MAX	257
+
 struct smb2_shareinfo {
         char     *name;
         uint32_t type;

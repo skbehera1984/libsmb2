@@ -69,14 +69,15 @@ int main(int argc, char *argv[])
                              url->server,
                              url->user,
                              &shares, &numshares) < 0) {
-                printf("smb2_connect_share failed. %s\n", smb2_get_error(smb2));
+                printf("failed to get share list Error : %s\n", smb2_get_error(smb2));
+                return -1;
         }
 
-        printf("%-30s %-11s %-50s\n", "ShareName", "ShareType", "ShareRemark");
-        printf("%-30s %-11s %-50s\n", "=========", "=========", "===========");
+        printf("%-30s %-11s\n", "ShareName", "ShareType");
+        printf("%-30s %-11s\n", "=========", "=========");
         entry = shares;
         while(entry) {
-                printf("%-30s %-11x %-5s\n", entry->name, entry->type, entry->remark);
+                printf("%-30s %-11x\n", entry->name, entry->type);
                 SMB2_LIST_REMOVE(&shares, entry);
                 free(entry->name);free(entry->remark);free(entry);
                 entry = shares;

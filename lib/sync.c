@@ -798,6 +798,9 @@ int smb2_list_shares(struct smb2_context *smb2,
         struct rpc_bind_response ack;
         struct rpc_bind_nack_response nack;
 
+        uint16_t max_xmit_frag = 0;
+        uint16_t max_recv_frag = 0;
+
         char serverName[4096] = {0};
 
         if (server == NULL) {
@@ -867,6 +870,9 @@ int smb2_list_shares(struct smb2_context *smb2,
                         smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
                         return -1;
                 }
+                /* save the max xmit and recv frag details */
+                max_xmit_frag = ack.max_xmit_frag;
+                max_recv_frag = ack.max_recv_frag;
         }
 
         if (sprintf(&serverName[0], "\\\\%s", server) < 0) {
@@ -881,13 +887,15 @@ int smb2_list_shares(struct smb2_context *smb2,
         do {
                 /* we need to do this in loop till we get all shares */
                 uint32_t srvs_sts = 0;
+                int last_frag = 1;
                 uint8_t  netShareEnumBuf[1024] = {0};
                 uint32_t netShareEnumBufLen = 1024;
                 struct NetrShareEnumRequest *srvs_req = NULL;
                 uint32_t payloadlen = 0;
                 uint32_t offset = 0;
 
-                uint8_t  output_buf[64*1024];
+#define MAX_BUF_SIZE	(64 * 1024)
+                uint8_t  output_buf[MAX_BUF_SIZE] = {0};
                 uint32_t output_count = 64 * 4096;
                 uint8_t  *resp = NULL;
                 uint32_t share_count = 0;
@@ -910,6 +918,12 @@ int smb2_list_shares(struct smb2_context *smb2,
                 offset += payloadlen;
                 dcerpc_create_NetrShareEnumRequest(smb2, srvs_req, payloadlen);
 
+                if (offset > max_xmit_frag) {
+                        smb2_set_error(smb2, "smb2_list_shares: IOCTL Payload size is "
+                                             "larger than max_xmit_frag");
+                        return -1;
+                }
+
                 status = smb2_ioctl(smb2, fh,
                                     FSCTL_PIPE_TRANSCEIVE,
                                     SMB2_0_IOCTL_IS_FSCTL,
@@ -924,17 +938,69 @@ int smb2_list_shares(struct smb2_context *smb2,
                 /* Response parsing */
                 resp = &output_buf[0];
                 offset = 0;
-                payloadlen = output_count;
 
                 if (dcerpc_parse_NetrShareEnumResponse(smb2,
                                                        resp,
-                                                       payloadlen,
+                                                       output_count,
                                                        &dce_rep) < 0) {
                         smb2_set_error(smb2,
                                        "dcerpc_parse_NetrShareEnumResponse failed : %s",
                                        smb2_get_error(smb2));
                         return -1;
                 }
+
+                last_frag = dce_rep.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
+                /* read the complete dcerpc data - all frags */
+                while (!last_frag) {
+                        uint8_t *readbuf = NULL;
+                        uint32_t frag_len = 0;
+                        struct NetrShareEnumResponse resp2 = {{0}};
+                        readbuf = (uint8_t *)calloc(1, max_recv_frag);
+                        if (readbuf == NULL) {
+                                smb2_set_error(smb2, "failed to allocate readbuf");
+                                return -1;
+                        }
+                        smb2_lseek(smb2, fh, 0, SEEK_SET, NULL);
+                        status = smb2_read(smb2, fh,
+                                           readbuf,
+                                           max_recv_frag);
+                        if (status < 0) {
+                                smb2_set_error(smb2, "failed to read remaining frags");
+                                free(readbuf); readbuf = NULL;
+                                return -1;
+                        }
+                        if (dcerpc_parse_NetrShareEnumResponse(smb2,
+                                                               readbuf,
+                                                               status,
+                                                               &resp2) < 0) {
+                                smb2_set_error(smb2,
+                                               "dcerpc_parse_NetrShareEnumResponse-2 failed : %s",
+                                               smb2_get_error(smb2));
+                                free(readbuf); readbuf = NULL;
+                                return -1;
+                        }
+                        last_frag = resp2.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
+                        frag_len = status - sizeof(struct NetrShareEnumResponse);
+
+                        if ((output_count + frag_len) > MAX_BUF_SIZE) {
+                                smb2_set_error(smb2, "smb2_list_shares : 64K is not sufficient to hold shares data");
+                                free(readbuf); readbuf = NULL;
+                                return -1;
+                        }
+
+                        /* what if all fragments add up to > 64K?
+                         * should output_buf be malloc-ed and resized?
+                         */
+                        /*Append the buffer*/
+                        memcpy(&output_buf[output_count],
+                               readbuf+sizeof(struct NetrShareEnumResponse),
+                               frag_len);
+                        output_count += frag_len;
+
+                        free(readbuf);
+                }
+
+                payloadlen = output_count;
                 offset += sizeof(struct NetrShareEnumResponse);
                 payloadlen -= sizeof(struct NetrShareEnumResponse);
 
@@ -962,7 +1028,6 @@ int smb2_list_shares(struct smb2_context *smb2,
                         return -1;
                 }
                 shares_read += share_count;
-
         } while (shares_read < total_share_count);
 
         /* close the pipe  & disconnect */

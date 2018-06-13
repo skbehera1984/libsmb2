@@ -528,6 +528,9 @@ srvsvc_parse_NetrShareEnum_buffer(struct smb2_context *smb2,
         }
 
         *total_entries = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+        buffer_offset += sizeof(uint32_t);
+
+        *resumeHandle  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
 
         return 0;
 }

@@ -229,6 +229,10 @@ struct NetrShareEnumRequest
 struct NetrShareEnumResponse
 {
         struct rpc_header dceRpcHdr;
+        /* in the response alloc_hint can be more than
+           frag_length, and we receive only one frag data and the
+           flag LAST_FRAG is not set.
+         */
         uint32_t alloc_hint;
         uint16_t context_id;
         uint8_t cancel_count;
