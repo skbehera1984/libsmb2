@@ -1039,3 +1039,44 @@ int smb2_list_shares(struct smb2_context *smb2,
         smb2_disconnect_share(smb2);
         return status;
 }
+
+int
+smb2_set_file_basic_info(struct smb2_context *smb2,
+                         const char *path,
+                         struct smb2_stat_64 *st)
+{
+        struct sync_cb_data cb_data;
+        struct smb2_file_basic_info info;
+
+        if (st == NULL) {
+                smb2_set_error(smb2, "%s : no info to set");
+                return -1;
+        }
+
+        cb_data.is_finished = 0;
+
+		info.creation_time.tv_sec =  st->smb2_crtime;
+		info.creation_time.tv_usec = st->smb2_crtime_nsec/1000;
+		info.last_access_time.tv_sec =  st->smb2_atime;
+		info.last_access_time.tv_usec = st->smb2_atime_nsec/1000;
+		info.last_write_time.tv_sec =  st->smb2_mtime;
+		info.last_write_time.tv_usec = st->smb2_mtime_nsec/1000;
+		info.change_time.tv_sec =  st->smb2_ctime;
+		info.change_time.tv_usec = st->smb2_ctime_nsec/1000;
+
+        if (st->smb2_type == SMB2_TYPE_DIRECTORY) {
+                info.file_attributes &= SMB2_FILE_ATTRIBUTE_DIRECTORY;
+        }
+
+        if (smb2_set_file_basic_info_async(smb2, path, &info,
+                                           generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
+}

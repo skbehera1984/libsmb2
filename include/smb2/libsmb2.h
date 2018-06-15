@@ -46,6 +46,8 @@ struct smb2_stat_64 {
 	uint64_t smb2_mtime_nsec;
 	uint64_t smb2_ctime;
 	uint64_t smb2_ctime_nsec;
+	uint64_t smb2_crtime;
+	uint64_t smb2_crtime_nsec;
 };
 
 struct smb2_statvfs {
@@ -974,6 +976,33 @@ int smb2_list_shares(struct smb2_context *smb2,
                      uint32_t   shinfo_type,
                      struct smb2_shareinfo **shares,
                      int *numshares);
+/* Async set_file_basic_info()
+ *
+ * Returns
+ *  0     : The operation was initiated. Result of the operation will be
+ *          reported through the callback function.
+ * -errno : There was an error. The callback function will not be invoked.
+ *
+ * When the callback is invoked, status indicates the result:
+ *      0 : Success.
+ * -errno : An error occured.
+ *          Command_data is NULL.
+ */
+int
+smb2_set_file_basic_info_async(struct smb2_context *smb2,
+                               const char *path,
+                               struct smb2_file_basic_info *info,
+                               smb2_command_cb cb, void *cb_data);
+
+/* Sync set_file_basic_info()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ */
+int
+smb2_set_file_basic_info(struct smb2_context *smb2,
+                         const char *path,
+                         struct smb2_stat_64 *st);
 
 #ifdef __cplusplus
 }
