@@ -354,7 +354,14 @@ void smb2_seekdir(struct smb2_context *smb2, struct smb2dir *smb2dir,
 /*
  * OPEN
  */
-struct smb2fh;
+struct smb2fh {
+        smb2_command_cb cb;
+        void *cb_data;
+
+        smb2_file_id file_id;
+        int64_t offset;
+};
+
 /*
  * Async open()
  *

@@ -71,7 +71,8 @@ smb2_encode_write_request(struct smb2_context *smb2,
         smb2_set_uint16(iov, 2, SMB2_HEADER_SIZE + 48);
         smb2_set_uint32(iov, 4, req->length);
         smb2_set_uint64(iov, 8, req->offset);
-        memcpy(iov->buf + 16, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov, 16, req->file_id.persistent_id);
+        smb2_set_uint64(iov, 24, req->file_id.volatile_id);
         smb2_set_uint32(iov, 32, req->channel);
         smb2_set_uint32(iov, 36, req->remaining_bytes);
         smb2_set_uint16(iov, 42, req->write_channel_info_length);

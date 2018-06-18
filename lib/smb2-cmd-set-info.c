@@ -74,7 +74,8 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
         smb2_set_uint8(iov, 3, req->file_info_class);
         smb2_set_uint16(iov,8, SMB2_HEADER_SIZE + 32); /* buffer offset */
         smb2_set_uint32(iov,12, req->additional_information);
-        memcpy(iov->buf + 16, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov,16, req->file_id.persistent_id);
+        smb2_set_uint64(iov,24, req->file_id.volatile_id);
 
         switch (req->info_type) {
         case SMB2_0_INFO_FILE:

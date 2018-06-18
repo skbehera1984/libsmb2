@@ -318,7 +318,10 @@ struct smb2_create_request {
 #define SMB2_CREATE_REPLY_SIZE 89
 
 #define SMB2_FD_SIZE 16
-typedef uint8_t smb2_file_id[SMB2_FD_SIZE];
+typedef struct _smb2_file_id {
+        uint64_t persistent_id;
+        uint64_t volatile_id;
+} __attribute__ (( __packed__ )) smb2_file_id;
 
 struct smb2_create_reply {
         uint8_t oplock_level;

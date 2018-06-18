@@ -66,7 +66,8 @@ smb2_encode_close_request(struct smb2_context *smb2,
 
         smb2_set_uint16(iov, 0, SMB2_CLOSE_REQUEST_SIZE);
         smb2_set_uint16(iov, 2, req->flags);
-        memcpy(iov->buf + 8, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov, 8, req->file_id.persistent_id);
+        smb2_set_uint64(iov, 16, req->file_id.volatile_id);
 
         return 0;
 }

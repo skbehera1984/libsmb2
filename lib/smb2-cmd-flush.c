@@ -65,7 +65,8 @@ smb2_encode_flush_request(struct smb2_context *smb2,
         iov = smb2_add_iovector(smb2, &pdu->out, buf, len, free);
 
         smb2_set_uint16(iov, 0, SMB2_FLUSH_REQUEST_SIZE);
-        memcpy(iov->buf + 8, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov, 8, req->file_id.persistent_id);
+        smb2_set_uint64(iov, 16, req->file_id.volatile_id);
 
         return 0;
 }

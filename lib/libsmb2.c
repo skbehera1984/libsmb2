@@ -111,8 +111,8 @@ static const char SMBC2SCipherKey[] = "SMBC2SCipherKey";
 #endif // !O_SYNC
 
 const smb2_file_id compound_file_id = {
-        0xff, 0xff, 0xff, 0xff,  0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff,  0xff, 0xff, 0xff, 0xff
+        0xffffffffffffffff,
+        0xffffffffffffffff
 };
 
 struct connect_data {
@@ -143,14 +143,6 @@ struct smb2dir {
         struct smb2_dirent_internal *entries;
         struct smb2_dirent_internal *current_entry;
         int index;
-};
-
-struct smb2fh {
-        smb2_command_cb cb;
-        void *cb_data;
-
-        smb2_file_id file_id;
-        int64_t offset;
 };
 
 static void
@@ -342,7 +334,8 @@ query_cb(struct smb2_context *smb2, int status,
                 memset(&req, 0, sizeof(struct smb2_query_directory_request));
                 req.file_information_class = SMB2_FILE_ID_FULL_DIRECTORY_INFORMATION;
                 req.flags = 0;
-                memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
+                req.file_id.persistent_id = dir->file_id.persistent_id;
+                req.file_id.volatile_id= dir->file_id.volatile_id;
                 req.output_buffer_length = 0xffff;
                 req.name = "*";
 
@@ -364,7 +357,8 @@ query_cb(struct smb2_context *smb2, int status,
                 /* We have all the data */
                 memset(&req, 0, sizeof(struct smb2_close_request));
                 req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-                memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
+                req.file_id.persistent_id = dir->file_id.persistent_id;
+                req.file_id.volatile_id = dir->file_id.volatile_id;
 
                 pdu = smb2_cmd_close_async(smb2, &req, od_close_cb, dir);
                 if (pdu == NULL) {
@@ -401,12 +395,14 @@ opendir_cb(struct smb2_context *smb2, int status,
                 return;
         }
 
-        memcpy(dir->file_id, rep->file_id, SMB2_FD_SIZE);
-        
+        dir->file_id.persistent_id = rep->file_id.persistent_id;
+        dir->file_id.volatile_id = rep->file_id.volatile_id;
+
         memset(&req, 0, sizeof(struct smb2_query_directory_request));
         req.file_information_class = SMB2_FILE_ID_FULL_DIRECTORY_INFORMATION;
         req.flags = 0;
-        memcpy(req.file_id, dir->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = dir->file_id.persistent_id;
+        req.file_id.volatile_id = dir->file_id.volatile_id;
         req.output_buffer_length = 0xffff;
         req.name = "*";
 
@@ -953,7 +949,8 @@ open_cb(struct smb2_context *smb2, int status,
                 return;
         }
 
-        memcpy(fh->file_id, rep->file_id, SMB2_FD_SIZE);
+        fh->file_id.persistent_id = rep->file_id.persistent_id;
+        fh->file_id.volatile_id = rep->file_id.volatile_id;
         fh->cb(smb2, 0, fh, fh->cb_data);
 }
 
@@ -1065,7 +1062,8 @@ smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         memset(&req, 0, sizeof(struct smb2_close_request));
         req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id = fh->file_id.volatile_id;
 
         pdu = smb2_cmd_close_async(smb2, &req, close_cb, fh);
         if (pdu == NULL) {
@@ -1104,7 +1102,8 @@ smb2_fsync_async(struct smb2_context *smb2, struct smb2fh *fh,
         fh->cb_data = cb_data;
 
         memset(&req, 0, sizeof(struct smb2_flush_request));
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id = fh->file_id.volatile_id;
 
         pdu = smb2_cmd_flush_async(smb2, &req, fsync_cb, fh);
         if (pdu == NULL) {
@@ -1191,7 +1190,8 @@ smb2_pread_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.length = count;
         req.offset = offset;
         req.buf = buf;
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id = fh->file_id.volatile_id;
         req.minimum_count = 0;
         req.channel = SMB2_CHANNEL_NONE;
         req.remaining_bytes = 0;
@@ -1282,7 +1282,8 @@ smb2_pwrite_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.length = count;
         req.offset = offset;
         req.buf = buf;
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id = fh->file_id.volatile_id;
         req.channel = SMB2_CHANNEL_NONE;
         req.remaining_bytes = 0;
         req.flags = 0;
@@ -1383,7 +1384,8 @@ create_cb_1(struct smb2_context *smb2, int status,
 
         memset(&req, 0, sizeof(struct smb2_close_request));
         req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(req.file_id, rep->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = rep->file_id.persistent_id;
+        req.file_id.volatile_id = rep->file_id.volatile_id;
 
         pdu = smb2_cmd_close_async(smb2, &req, create_cb_2, create_data);
         if (pdu == NULL) {
@@ -1569,7 +1571,8 @@ smb2_fstat_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.output_buffer_length = 65535;
         req.additional_information = 0;
         req.flags = 0;
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id = fh->file_id.volatile_id;
 
         pdu = smb2_cmd_query_info_async(smb2, &req, fstat_cb_1, stat_data);
         if (pdu == NULL) {
@@ -1712,7 +1715,8 @@ smb2_getinfo_async(struct smb2_context *smb2, const char *path,
         qi_req.output_buffer_length = 65535;
         qi_req.additional_information = 0;
         qi_req.flags = 0;
-        memcpy(qi_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        qi_req.file_id.persistent_id = compound_file_id.persistent_id;
+        qi_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_query_info_async(smb2, &qi_req,
                                              getinfo_cb_2, stat_data);
@@ -1727,7 +1731,8 @@ smb2_getinfo_async(struct smb2_context *smb2, const char *path,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, getinfo_cb_3, stat_data);
         if (next_pdu == NULL) {
@@ -1857,7 +1862,8 @@ smb2_truncate_async(struct smb2_context *smb2, const char *path,
         si_req.info_type = SMB2_0_INFO_FILE;
         si_req.file_info_class = SMB2_FILE_END_OF_FILE_INFORMATION;
         si_req.additional_information = 0;
-        memcpy(si_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        si_req.file_id.persistent_id = compound_file_id.persistent_id;
+        si_req.file_id.volatile_id= compound_file_id.volatile_id;
         si_req.input_data = &eofi;
 
         next_pdu = smb2_cmd_set_info_async(smb2, &si_req,
@@ -1874,7 +1880,8 @@ smb2_truncate_async(struct smb2_context *smb2, const char *path,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, trunc_cb_3, trunc_data);
         if (next_pdu == NULL) {
@@ -1980,7 +1987,8 @@ smb2_rename_async(struct smb2_context *smb2, const char *oldpath,
         si_req.info_type = SMB2_0_INFO_FILE;
         si_req.file_info_class = SMB2_FILE_RENAME_INFORMATION;
         si_req.additional_information = 0;
-        memcpy(si_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        si_req.file_id.persistent_id = compound_file_id.persistent_id;
+        si_req.file_id.volatile_id= compound_file_id.volatile_id;
         si_req.input_data = &rn_info;
 
         next_pdu = smb2_cmd_set_info_async(smb2, &si_req,
@@ -1997,7 +2005,8 @@ smb2_rename_async(struct smb2_context *smb2, const char *oldpath,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, rename_cb_3, rename_data);
         if (next_pdu == NULL) {
@@ -2049,7 +2058,8 @@ smb2_ftruncate_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.info_type = SMB2_0_INFO_FILE;
         req.file_info_class = SMB2_FILE_END_OF_FILE_INFORMATION;
         req.additional_information = 0;
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id= fh->file_id.volatile_id;
         req.input_data = &eofi;
 
         pdu = smb2_cmd_set_info_async(smb2, &req, ftrunc_cb_1, create_data);
@@ -2318,7 +2328,8 @@ smb2_get_security_async(struct smb2_context *smb2,
                 SMB2_OWNER_SECURITY_INFORMATION |
                 SMB2_GROUP_SECURITY_INFORMATION |
                 SMB2_DACL_SECURITY_INFORMATION;
-        memcpy(qi_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        qi_req.file_id.persistent_id = compound_file_id.persistent_id;
+        qi_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_query_info_async(smb2, &qi_req,
                                              sec_query_cb, sec_data);
@@ -2333,7 +2344,8 @@ smb2_get_security_async(struct smb2_context *smb2,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, sec_close_cb, sec_data);
         if (next_pdu == NULL) {
@@ -2407,7 +2419,8 @@ smb2_set_security_async(struct smb2_context *smb2,
                 SMB2_OWNER_SECURITY_INFORMATION |
                 SMB2_GROUP_SECURITY_INFORMATION |
                 SMB2_DACL_SECURITY_INFORMATION;
-        memcpy(si_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        si_req.file_id.persistent_id = compound_file_id.persistent_id;
+        si_req.file_id.volatile_id= compound_file_id.volatile_id;
         si_req.input_data = &info;
 
         next_pdu = smb2_cmd_set_info_async(smb2, &si_req,
@@ -2424,7 +2437,8 @@ smb2_set_security_async(struct smb2_context *smb2,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, sec_close_cb, sec_data);
         if (next_pdu == NULL) {
@@ -2508,7 +2522,8 @@ smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.ctl_code = ioctl_ctl;
         req.input_count = input_count;
         req.input_buffer = input_buffer;
-        memcpy(req.file_id, fh->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id= fh->file_id.volatile_id;
         req.flags = ioctl_flags;
         req.max_input_response = 0;
         req.max_output_response = 64 * 1024;
@@ -2673,7 +2688,8 @@ smb2_set_file_basic_info_async(struct smb2_context *smb2,
         memset(&si_req, 0, sizeof(struct smb2_set_info_request));
         si_req.info_type = SMB2_0_INFO_FILE;
         si_req.file_info_class = SMB2_FILE_BASIC_INFORMATION;
-        memcpy(si_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        si_req.file_id.persistent_id = compound_file_id.persistent_id;
+        si_req.file_id.volatile_id= compound_file_id.volatile_id;
         si_req.input_data = info;
 
         next_pdu = smb2_cmd_set_info_async(smb2, &si_req,
@@ -2690,7 +2706,8 @@ smb2_set_file_basic_info_async(struct smb2_context *smb2,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, set_basicinfo_close_cb, basicinfo_data);
         if (next_pdu == NULL) {

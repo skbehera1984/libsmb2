@@ -196,7 +196,8 @@ smb2_process_create_fixed(struct smb2_context *smb2,
         smb2_get_uint64(iov, 40, &rep->allocation_size);
         smb2_get_uint64(iov, 48, &rep->end_of_file);
         smb2_get_uint32(iov, 56, &rep->file_attributes);
-        memcpy(rep->file_id, iov->buf + 64, SMB2_FD_SIZE);
+        smb2_get_uint64(iov, 64, &rep->file_id.persistent_id);
+        smb2_get_uint64(iov, 72, &rep->file_id.volatile_id);
         smb2_get_uint32(iov, 80, &rep->create_context_offset);
         smb2_get_uint32(iov, 84, &rep->create_context_length);
 

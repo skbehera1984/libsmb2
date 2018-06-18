@@ -70,7 +70,8 @@ smb2_encode_ioctl_request(struct smb2_context *smb2,
         smb2_set_uint16(iov, 0, SMB2_IOCTL_REQUEST_SIZE);
         smb2_set_uint16(iov, 2, req->reserved);
         smb2_set_uint32(iov, 4, req->ctl_code);
-        memcpy(iov->buf + 8, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov, 8, req->file_id.persistent_id);
+        smb2_set_uint64(iov, 16, req->file_id.volatile_id);
         smb2_set_uint32(iov, 24, InputOffset);
         smb2_set_uint32(iov, 28, req->input_count);
         smb2_set_uint32(iov, 32, req->max_input_response);
@@ -148,7 +149,8 @@ smb2_process_ioctl_fixed(struct smb2_context *smb2,
 
         smb2_get_uint16(iov,  2, &rep->reserved);
         smb2_get_uint32(iov,  4, &rep->ctl_code);
-        memcpy(iov->buf + 8, rep->file_id, SMB2_FD_SIZE);
+        smb2_get_uint64(iov,  8, &rep->file_id.persistent_id);
+        smb2_get_uint64(iov, 16, &rep->file_id.volatile_id);
         smb2_get_uint32(iov, 24, &rep->input_offset);
         smb2_get_uint32(iov, 28, &rep->input_count);
         smb2_get_uint32(iov, 32, &rep->output_offset);

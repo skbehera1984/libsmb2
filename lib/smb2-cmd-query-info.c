@@ -77,7 +77,8 @@ smb2_encode_query_info_request(struct smb2_context *smb2,
         smb2_set_uint32(iov,12, req->input_buffer_length);
         smb2_set_uint32(iov,16, req->additional_information);
         smb2_set_uint32(iov,20, req->flags);
-        memcpy(iov->buf + 24, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov,24, req->file_id.persistent_id);
+        smb2_set_uint64(iov,32, req->file_id.volatile_id);
 
         /* Remember what we asked for so that we can unmarshall the reply */
         pdu->info_type       = req->info_type;

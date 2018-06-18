@@ -124,7 +124,8 @@ smb2_encode_query_directory_request(struct smb2_context *smb2,
         smb2_set_uint8(iov, 2, req->file_information_class);
         smb2_set_uint8(iov, 3, req->flags);
         smb2_set_uint32(iov, 4, req->file_index);
-        memcpy(iov->buf + 8, req->file_id, SMB2_FD_SIZE);
+        smb2_set_uint64(iov, 8, req->file_id.persistent_id);
+        smb2_set_uint64(iov, 16, req->file_id.volatile_id);
         smb2_set_uint16(iov, 24, SMB2_HEADER_SIZE + 32);
         smb2_set_uint32(iov, 28, req->output_buffer_length);
 

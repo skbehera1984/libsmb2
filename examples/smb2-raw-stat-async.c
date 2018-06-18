@@ -176,7 +176,8 @@ int send_compound_stat(struct smb2_context *smb2, const char *path,
         qi_req.output_buffer_length = 65535;
         qi_req.additional_information = 0;
         qi_req.flags = 0;
-        memcpy(qi_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        qi_req.file_id.persistent_id = compound_file_id.persistent_id;
+        qi_req.file_id.volatile_id = compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_query_info_async(smb2, &qi_req,
                                              stat_cb_2, stat_data);
@@ -191,7 +192,8 @@ int send_compound_stat(struct smb2_context *smb2, const char *path,
         /* CLOSE command */
         memset(&cl_req, 0, sizeof(struct smb2_close_request));
         cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        memcpy(cl_req.file_id, compound_file_id, SMB2_FD_SIZE);
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id = compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, stat_cb_3, stat_data);
         if (next_pdu == NULL) {

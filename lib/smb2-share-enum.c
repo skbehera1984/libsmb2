@@ -1305,7 +1305,8 @@ nse_enum_write_cb(struct smb2_context *smb2, int status,
         req.length = NSE_BUF_SIZE;
         req.offset = 0;
         req.buf = &nse->buf[0];
-        memcpy(req.file_id, nse->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = nse->file_id.persistent_id;
+        req.file_id.volatile_id   = nse->file_id.volatile_id;
         req.minimum_count = 0;
         req.channel = SMB2_CHANNEL_NONE;
         req.remaining_bytes = 0;
@@ -1432,7 +1433,8 @@ nse_bind_read_cb(struct smb2_context *smb2, int status,
         req.length = offset;
         req.offset = 0;
         req.buf = &nse->buf[0];
-        memcpy(req.file_id, nse->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = nse->file_id.persistent_id;
+        req.file_id.volatile_id   = nse->file_id.volatile_id;
         req.channel = SMB2_CHANNEL_NONE;
         req.remaining_bytes = 0;
         req.flags = 0;
@@ -1466,7 +1468,8 @@ nse_bind_write_cb(struct smb2_context *smb2, int status,
         req.length = NSE_BUF_SIZE;
         req.offset = 0;
         req.buf = &nse->buf[0];
-        memcpy(req.file_id, nse->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = nse->file_id.persistent_id;
+        req.file_id.volatile_id   = nse->file_id.volatile_id;
         req.minimum_count = 0;
         req.channel = SMB2_CHANNEL_NONE;
         req.remaining_bytes = 0;
@@ -1501,7 +1504,8 @@ nse_open_cb(struct smb2_context *smb2, int status,
                 return;
         }
 
-        memcpy(nse->file_id, rep->file_id, SMB2_FD_SIZE);
+        nse->file_id.persistent_id = rep->file_id.persistent_id;
+        nse->file_id.volatile_id   = rep->file_id.volatile_id;
 
         memset(&dce_pdu, 0, sizeof(struct dcerpc_pdu));
         dce_pdu.hdr.rpc_vers = 5;
@@ -1533,7 +1537,8 @@ nse_open_cb(struct smb2_context *smb2, int status,
         req.length = offset;
         req.offset = 0;
         req.buf = &nse->buf[0];
-        memcpy(req.file_id, nse->file_id, SMB2_FD_SIZE);
+        req.file_id.persistent_id = nse->file_id.persistent_id;
+        req.file_id.volatile_id   = nse->file_id.volatile_id;
         req.channel = SMB2_CHANNEL_NONE;
         req.remaining_bytes = 0;
         req.flags = 0;
