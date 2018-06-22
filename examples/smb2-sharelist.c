@@ -63,23 +63,34 @@ int main(int argc, char *argv[])
         }
 
         smb2_set_security_mode(smb2, SMB2_NEGOTIATE_SIGNING_ENABLED);
-        smb2_set_domain(smb2, url->domain);
 
         if (smb2_list_shares(smb2,
                              url->server,
                              url->user,
+                             2, /*query share info type*/
                              &shares, &numshares) < 0) {
                 printf("failed to get share list Error : %s\n", smb2_get_error(smb2));
                 return -1;
         }
 
-        printf("%-30s %-11s\n", "ShareName", "ShareType");
-        printf("%-30s %-11s\n", "=========", "=========");
         entry = shares;
+        if (entry->share_info_type == 1) {
+                printf("%-30s %-11s\n", "ShareName", "ShareType");
+                printf("%-30s %-11s\n", "=========", "=========");
+        } else if (entry->share_info_type == 2) {
+                printf("%-30s %-11s %-100s\n", "ShareName", "ShareType", "SharePath");
+                printf("%-30s %-11s %-100s\n", "=========", "=========", "=========");
+        }
         while(entry) {
-                printf("%-30s %-11x\n", entry->name, entry->type);
+                if (entry->share_info_type == 1) {
+                        printf("%-30s %-11x\n", entry->info.info1.name, entry->info.info1.type);
+                        free(entry->info.info1.name);free(entry->info.info1.remark);
+                } else if (entry->share_info_type == 2) {
+                        printf("%-30s %-11x %-100s\n", entry->info.info2.name, entry->info.info2.type, entry->info.info2.path);
+                        free(entry->info.info2.name);free(entry->info.info2.remark); free(entry->info.info2.path);
+                }
                 SMB2_LIST_REMOVE(&shares, entry);
-                free(entry->name);free(entry->remark);free(entry);
+                free(entry);
                 entry = shares;
         }
 

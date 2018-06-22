@@ -252,6 +252,7 @@ dcerpc_parse_NetrShareEnumResponse(struct smb2_context *smb2,
 int
 dcerpc_create_NetrShareEnumRequest_payload(struct smb2_context *smb2,
                                            char      *server_name,
+                                           uint32_t   shinfo_type,
                                            uint64_t  resumeHandle,
                                            uint8_t   *buffer,
                                            uint32_t  *buffer_len);
@@ -267,6 +268,7 @@ srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
                                    const uint32_t buf_len,
                                    uint32_t *num_entries,
                                    uint32_t *total_entries,
+                                   uint32_t *resumeHandlePtr,
                                    uint32_t *resumeHandle,
                                    struct smb2_shareinfo **shares);
 

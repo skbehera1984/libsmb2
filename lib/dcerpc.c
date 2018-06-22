@@ -350,6 +350,7 @@ dcerpc_init_InfoStruct(struct smb2_context *smb2,
 int
 dcerpc_create_NetrShareEnumRequest_payload(struct smb2_context *smb2,
                                            char       *server_name,
+                                           uint32_t   shinfo_type,
                                            uint64_t   resumeHandle,
                                            uint8_t    *buffer,
                                            uint32_t   *buffer_len)
@@ -377,7 +378,7 @@ dcerpc_create_NetrShareEnumRequest_payload(struct smb2_context *smb2,
                 offset += padlen;
         }
 
-        if (dcerpc_init_InfoStruct(smb2, 1, 0x01fbf3e8, 0, 0,
+        if (dcerpc_init_InfoStruct(smb2, shinfo_type, 0x01fbf3e8, 0, 0,
                                    buffer+offset, buf_len - offset) <0) {
                  return -1;
         }
@@ -441,6 +442,7 @@ srvsvc_parse_NetrShareEnum_buffer(struct smb2_context *smb2,
                                   const uint32_t share_count,
                                   struct smb2_shareinfo **shares,
                                   uint32_t *total_entries,
+                                  uint32_t *resumeHandlePtr,
                                   uint32_t *resumeHandle)
 {
         const uint8_t *buffer = NULL;
@@ -512,9 +514,10 @@ srvsvc_parse_NetrShareEnum_buffer(struct smb2_context *smb2,
                 payload_offset += (2 * share_remark.length);
 
                 /* Fill the details */
-                shi01->type = share_info.type;
-                shi01->name = shi_name;
-                shi01->remark = shi_remark;
+                shi01->share_info_type = 1;
+                shi01->info.info1.type = share_info.type;
+                shi01->info.info1.name = shi_name;
+                shi01->info.info1.remark = shi_remark;
                 shi01->next = NULL;
 
                 /*add the entity */
@@ -530,7 +533,183 @@ srvsvc_parse_NetrShareEnum_buffer(struct smb2_context *smb2,
         *total_entries = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
         buffer_offset += sizeof(uint32_t);
 
-        *resumeHandle  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+        if ( (in_buffer_len - buffer_offset) == 8 ) {
+                *resumeHandlePtr  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+                buffer_offset += sizeof(uint32_t);
+                *resumeHandle  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+                buffer_offset += sizeof(uint32_t);
+        } else {
+                /* pointer to NULL - 4 bytes */
+                *resumeHandlePtr  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+                buffer_offset += sizeof(uint32_t);
+                *resumeHandle  = 0;
+        }
+
+        return 0;
+}
+
+static int
+srvsvc_parse_NetrShareEnum_buffer2(struct smb2_context *smb2,
+                                   const uint8_t *in_buffer,
+                                   uint32_t in_buffer_len,
+                                   uint32_t buffer_consumed,
+                                   const uint32_t share_count,
+                                   struct smb2_shareinfo **shares,
+                                   uint32_t *total_entries,
+                                   uint32_t *resumeHandlePtr,
+                                   uint32_t *resumeHandle)
+{
+        const uint8_t *buffer = NULL;
+        uint32_t buffer_offset = 0;
+        const uint8_t *payload = NULL;
+        uint32_t payload_offset = 0;
+        int i = 0;
+
+        buffer = in_buffer + buffer_consumed;
+        payload = buffer + (share_count * sizeof (struct ShareInfo2));
+
+        for (i = 0; i < share_count; i++) {
+                struct ShareInfo2 share_info, *infoptr = NULL;
+                struct stringValue share_name, *name_ptr = NULL;
+                struct stringValue share_remark, *remark_ptr = NULL;
+                struct stringValue share_path, *path_ptr = NULL;
+                struct stringValue share_passwd, *passwd_ptr = NULL;
+                char *shi_name = NULL;
+                char *shi_remark = NULL;
+                char *shi_path = NULL;
+                char *shi_passwd = NULL;
+                uint32_t padlen = 0;
+                struct smb2_shareinfo *shi01 = NULL;
+
+                shi01 = (struct smb2_shareinfo *)calloc(1, sizeof(struct smb2_shareinfo));
+                if (shi01 == NULL) {
+                        return -1;
+                }
+
+                infoptr = (struct ShareInfo2 *) (buffer + buffer_offset);
+                share_info.name_referent_id   = le32toh(infoptr->name_referent_id);
+                share_info.type               = le32toh(infoptr->type);
+                share_info.remark_referent_id = le32toh(infoptr->remark_referent_id);
+                share_info.permissions        = le32toh(infoptr->permissions);
+                share_info.max_uses           = le32toh(infoptr->max_uses);
+                share_info.current_uses       = le32toh(infoptr->current_uses);
+                share_info.path_referent_id   = le32toh(infoptr->path_referent_id);
+                share_info.passwd_referent_id = le32toh(infoptr->passwd_referent_id);
+                buffer_offset += sizeof(struct ShareInfo2);
+
+                /* the payload buffer is 4 byte multiple.
+                 * while packing each element it is padded if not multiple of 4 byte.
+                 * the buffer size count starts from the payload.
+                 */
+                padlen = 0;
+                if ((payload_offset & 0x03) != 0) {
+                        padlen = 4 - (payload_offset & 0x03);
+                        payload_offset += padlen;
+                }
+
+                name_ptr = (struct stringValue *) (payload + payload_offset);
+                share_name.max_length = le32toh(name_ptr->max_length);
+                share_name.offset     = le32toh(name_ptr->offset);
+                share_name.length     = le32toh(name_ptr->length);
+                payload_offset += sizeof(struct stringValue);
+
+                shi_name = ucs2_to_utf8((uint16_t *)(payload+payload_offset),
+                                        share_name.length);
+
+                payload_offset += (2 * share_name.length);
+
+                padlen = 0;
+                if ((payload_offset & 0x03) != 0) {
+                        padlen = 4 - (payload_offset & 0x03);
+                        payload_offset += padlen;
+                }
+
+                remark_ptr = (struct stringValue *) (payload + payload_offset);
+                share_remark.max_length = le32toh(remark_ptr->max_length);
+                share_remark.offset     = le32toh(remark_ptr->offset);
+                share_remark.length     = le32toh(remark_ptr->length);
+                payload_offset += sizeof(struct stringValue);
+
+                if (share_remark.length > 1) {
+                        shi_remark = ucs2_to_utf8((uint16_t *)(payload+payload_offset),
+                                                  share_remark.length);
+                }
+                payload_offset += (2 * share_remark.length);
+
+                padlen = 0;
+                if ((payload_offset & 0x03) != 0) {
+                        padlen = 4 - (payload_offset & 0x03);
+                        payload_offset += padlen;
+                }
+
+                path_ptr = (struct stringValue *) (payload + payload_offset);
+                share_path.max_length = le32toh(path_ptr->max_length);
+                share_path.offset     = le32toh(path_ptr->offset);
+                share_path.length     = le32toh(path_ptr->length);
+                payload_offset += sizeof(struct stringValue);
+
+                if (share_path.length > 1) {
+                        shi_path = ucs2_to_utf8((uint16_t *)(payload+payload_offset),
+                                                share_path.length);
+                }
+                payload_offset += (2 * share_path.length);
+
+                padlen = 0;
+                if ((payload_offset & 0x03) != 0) {
+                        padlen = 4 - (payload_offset & 0x03);
+                        payload_offset += padlen;
+                }
+
+                if (share_info.passwd_referent_id != 0) {
+                        passwd_ptr = (struct stringValue *) (payload + payload_offset);
+                        share_passwd.max_length = le32toh(passwd_ptr->max_length);
+                        share_passwd.offset     = le32toh(passwd_ptr->offset);
+                        share_passwd.length     = le32toh(passwd_ptr->length);
+                        payload_offset += sizeof(struct stringValue);
+
+                        if (share_passwd.length > 1) {
+                                shi_passwd = ucs2_to_utf8((uint16_t *)(payload+payload_offset),
+                                                          share_passwd.length);
+                        }
+                        payload_offset += (2 * share_passwd.length);
+                }
+
+                /* Fill the details */
+                shi01->share_info_type = 2;
+                shi01->info.info2.type = share_info.type;
+                shi01->info.info2.name = shi_name;
+                shi01->info.info2.remark = shi_remark;
+                shi01->info.info2.permissions  = share_info.permissions;
+                shi01->info.info2.max_uses     = share_info.max_uses;
+                shi01->info.info2.current_uses = share_info.current_uses;
+                shi01->info.info2.path         = shi_path;
+                shi01->info.info2.password     = shi_passwd;
+                shi01->next = NULL;
+
+                /*add the entity */
+                SMB2_LIST_ADD_END(shares, shi01)
+        }
+
+        buffer_offset += buffer_consumed + payload_offset;
+        if ((buffer_offset & 0x03) != 0) {
+                uint32_t padlen = 4 - (buffer_offset & 0x03);
+                buffer_offset += padlen;
+        }
+
+        *total_entries = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+        buffer_offset += sizeof(uint32_t);
+
+        if ( (in_buffer_len - buffer_offset) == 8 ) {
+                *resumeHandlePtr  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+                buffer_offset += sizeof(uint32_t);
+                *resumeHandle  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+                buffer_offset += sizeof(uint32_t);
+        } else {
+                /* pointer to NULL - 4 bytes */
+                *resumeHandlePtr  = le32toh(*(uint32_t *)(in_buffer+buffer_offset));
+                buffer_offset += sizeof(uint32_t);
+                *resumeHandle  = 0;
+        }
 
         return 0;
 }
@@ -541,6 +720,7 @@ srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
                                    const uint32_t buf_len,
                                    uint32_t *num_entries,
                                    uint32_t *total_entries,
+                                   uint32_t *resumeHandlePtr,
                                    uint32_t *resumeHandle,
                                    struct smb2_shareinfo **shares)
 {
@@ -558,14 +738,32 @@ srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
 
         *num_entries = info.num_entries;
 
-        if (srvsvc_parse_NetrShareEnum_buffer(smb2,
+        if (info.info_level == 1) {
+                if (srvsvc_parse_NetrShareEnum_buffer(smb2,
                                               buffer,
                                               buf_len,
                                               offset,
                                               info.num_entries,
                                               shares,
                                               total_entries,
+                                              resumeHandlePtr,
                                               resumeHandle) < 0) {
+                        return -1;
+                }
+        } else if (info.info_level == 2) {
+                if (srvsvc_parse_NetrShareEnum_buffer2(smb2,
+                                              buffer,
+                                              buf_len,
+                                              offset,
+                                              info.num_entries,
+                                              shares,
+                                              total_entries,
+                                              resumeHandlePtr,
+                                              resumeHandle) < 0) {
+                        return -1;
+                }
+        } else {
+                smb2_set_error(smb2, "%s: unsupported share info type", __func__);
                 return -1;
         }
 

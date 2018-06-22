@@ -934,10 +934,31 @@ struct smb2fh *smb2_open_pipe(struct smb2_context *smb2,
 #define SMB2_SHARE_NAME_MAX	257
 #define SMB2_SHARE_REMARK_MAX	257
 
-struct smb2_shareinfo {
+struct share_info_1 {
         char     *name;
         uint32_t type;
         char     *remark;
+};
+
+struct share_info_2 {
+        char     *name;
+        uint32_t type;
+        char     *remark;
+        uint32_t permissions;
+        uint32_t max_uses;
+        uint32_t current_uses;
+        char     *path;
+        char     *password;
+};
+
+union share_info {
+        struct share_info_1 info1;
+        struct share_info_2 info2;
+};
+
+struct smb2_shareinfo {
+        uint32_t share_info_type;
+        union share_info info;
         struct smb2_shareinfo *next;
 };
 
@@ -950,6 +971,7 @@ struct smb2_shareinfo {
 int smb2_list_shares(struct smb2_context *smb2,
                      const char *server,
                      const char *user,
+                     uint32_t   shinfo_type,
                      struct smb2_shareinfo **shares,
                      int *numshares);
 

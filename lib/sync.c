@@ -782,6 +782,7 @@ struct smb2fh *smb2_open_pipe(struct smb2_context *smb2, const char *pipe)
 int smb2_list_shares(struct smb2_context *smb2,
                      const char *server,
                      const char *user,
+                     uint32_t   shinfo_type,
                      struct smb2_shareinfo **shares,
                      int *numshares
                     )
@@ -880,6 +881,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 return -1;
         }
 
+        uint32_t resumeHandlePtr = 0;
         uint32_t resumeHandle = 0;
         uint32_t shares_read = 0;
         uint32_t total_share_count = 0;
@@ -909,6 +911,7 @@ int smb2_list_shares(struct smb2_context *smb2,
 
                 if (dcerpc_create_NetrShareEnumRequest_payload(smb2,
                                serverName,
+                               shinfo_type,
                                resumeHandle,
                                netShareEnumBuf+offset,
                                &payloadlen) < 0) {
@@ -1020,6 +1023,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                                                        payloadlen,
                                                        &share_count,
                                                        &total_share_count,
+                                                       &resumeHandlePtr,
                                                        &resumeHandle,
                                                        shares) < 0) {
                         smb2_set_error(smb2,
