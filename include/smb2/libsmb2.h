@@ -66,6 +66,9 @@ struct smb2_statvfs {
 
 struct smb2dirent {
         const char *name;
+        uint64_t allocation_size;
+        uint32_t attributes;
+        uint32_t ea_size;
         struct smb2_stat_64 st;
 };
 
