@@ -448,6 +448,29 @@ int smb2_stat(struct smb2_context *smb2, const char *path,
 	return cb_data.status;
 }
 
+int smb2_query_file_all_info(struct smb2_context *smb2,
+                             const char *path,
+                             struct smb2_file_info_all *all_info)
+{
+        struct sync_cb_data cb_data;
+
+        cb_data.is_finished = 0;
+
+        if (smb2_query_file_all_info_async(smb2, path,
+                                           all_info,
+                                           generic_status_cb,
+                                           &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getallinfo_async failed");
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
+}
+
 int smb2_rename(struct smb2_context *smb2, const char *oldpath,
                 const char *newpath)
 {

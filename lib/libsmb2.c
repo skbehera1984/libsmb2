@@ -2727,3 +2727,178 @@ smb2_set_file_basic_info_async(struct smb2_context *smb2,
 
         return 0;
 }
+
+/* query file info - all info*/
+struct query_allinfo_cb_data {
+        smb2_command_cb cb;
+        void *cb_data;
+
+        uint32_t status;
+        void *info;
+};
+
+static void
+getallinfo_create_cb(struct smb2_context *smb2, int status,
+                     void *command_data _U_, void *private_data)
+{
+        struct query_allinfo_cb_data *qainfo_cbdata = private_data;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "Open failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                qainfo_cbdata->cb(smb2, -nterror_to_errno(status), NULL, qainfo_cbdata->cb_data);
+                qainfo_cbdata->status = status;
+                return;
+        }
+        qainfo_cbdata->status = status;
+}
+
+static void
+getallinfo_close_cb(struct smb2_context *smb2, int status,
+                    void *command_data _U_, void *private_data)
+{
+        struct query_allinfo_cb_data *qainfo_cbdata = private_data;
+
+        if (qainfo_cbdata->status != SMB2_STATUS_SUCCESS) {
+                return;
+        }
+        qainfo_cbdata->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "CloseFile failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                qainfo_cbdata->cb(smb2, -nterror_to_errno(status), NULL, qainfo_cbdata->cb_data);
+                return;
+        }
+
+        qainfo_cbdata->cb(smb2, -nterror_to_errno(status),
+                          NULL, qainfo_cbdata->cb_data);
+        free(qainfo_cbdata);
+}
+
+static void
+getallinfo_query_cb(struct smb2_context *smb2, int status,
+                    void *command_data, void *private_data)
+{
+        struct query_allinfo_cb_data *qainfo_cbdata = private_data;
+        struct smb2_query_info_reply *rep = command_data;
+        struct smb2_file_all_info *allInfo = rep->output_buffer;
+
+        if (qainfo_cbdata->status != SMB2_STATUS_SUCCESS) {
+                return;
+        }
+        qainfo_cbdata->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "QueryFileInfo failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                qainfo_cbdata->cb(smb2, -nterror_to_errno(status), NULL, qainfo_cbdata->cb_data);
+                return;
+        }
+
+        struct smb2_file_info_all *file_all_info = qainfo_cbdata->info;
+
+        file_all_info->smb2_type = SMB2_TYPE_FILE;
+        if (allInfo->basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
+                file_all_info->smb2_type = SMB2_TYPE_DIRECTORY;
+        }
+        file_all_info->smb2_nlink      = allInfo->standard.number_of_links;
+        file_all_info->smb2_ino        = allInfo->index_number;
+        file_all_info->smb2_size       = allInfo->standard.end_of_file;
+        file_all_info->smb2_atime      = allInfo->basic.last_access_time.tv_sec;
+        file_all_info->smb2_atime_nsec = allInfo->basic.last_access_time.tv_usec * 1000;
+        file_all_info->smb2_mtime      = allInfo->basic.last_write_time.tv_sec;
+        file_all_info->smb2_mtime_nsec = allInfo->basic.last_write_time.tv_usec * 1000;
+        file_all_info->smb2_ctime      = allInfo->basic.change_time.tv_sec;
+        file_all_info->smb2_ctime_nsec = allInfo->basic.change_time.tv_usec * 1000;
+        file_all_info->smb2_crtime      = allInfo->basic.creation_time.tv_sec;
+        file_all_info->smb2_crtime_nsec = allInfo->basic.creation_time.tv_usec * 1000;
+
+        file_all_info->file_attributes  = allInfo->basic.file_attributes;
+
+        file_all_info->allocation_size  = allInfo->standard.allocation_size;
+        file_all_info->end_of_file      = allInfo->standard.end_of_file;
+        file_all_info->delete_pending   = allInfo->standard.delete_pending;
+        file_all_info->directory        = allInfo->standard.directory;
+
+        smb2_free_data(smb2, rep->output_buffer);
+}
+
+int
+smb2_query_file_all_info_async(struct smb2_context *smb2, const char *path,
+                                struct smb2_file_info_all *all_info,
+                               smb2_command_cb cb, void *cb_data)
+{
+        struct query_allinfo_cb_data *QA_data;
+        struct smb2_create_request cr_req;
+        struct smb2_query_info_request qi_req;
+        struct smb2_close_request cl_req;
+        struct smb2_pdu *pdu, *next_pdu;
+
+        QA_data = malloc(sizeof(struct query_allinfo_cb_data));
+        if (QA_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate create_data");
+                return -1;
+        }
+        memset(QA_data, 0, sizeof(struct query_allinfo_cb_data));
+
+        QA_data->cb = cb;
+        QA_data->cb_data = cb_data;
+        QA_data->info = all_info;
+
+        /* CREATE command */
+        memset(&cr_req, 0, sizeof(struct smb2_create_request));
+        cr_req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
+        cr_req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
+        cr_req.desired_access = SMB2_FILE_READ_ATTRIBUTES | SMB2_FILE_READ_EA;
+        cr_req.file_attributes = 0;
+        cr_req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
+        cr_req.create_disposition = SMB2_FILE_OPEN;
+        cr_req.create_options = 0;
+        cr_req.name = path;
+
+        pdu = smb2_cmd_create_async(smb2, &cr_req, getallinfo_create_cb, QA_data);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create create command");
+                free(QA_data);
+                return -1;
+        }
+
+        /* QUERY INFO command */
+        memset(&qi_req, 0, sizeof(struct smb2_query_info_request));
+        qi_req.info_type = SMB2_0_INFO_FILE;
+        qi_req.file_info_class = SMB2_FILE_ALL_INFORMATION;
+        qi_req.output_buffer_length = 65535;
+        qi_req.additional_information = 0;
+        qi_req.flags = 0;
+        qi_req.file_id.persistent_id = compound_file_id.persistent_id;
+        qi_req.file_id.volatile_id= compound_file_id.volatile_id;
+
+        next_pdu = smb2_cmd_query_info_async(smb2, &qi_req, getallinfo_query_cb, QA_data);
+        if (next_pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create query command");
+                free(QA_data);
+                smb2_free_pdu(smb2, pdu);
+                return -1;
+        }
+        smb2_add_compound_pdu(smb2, pdu, next_pdu);
+
+        /* CLOSE command */
+        memset(&cl_req, 0, sizeof(struct smb2_close_request));
+        cl_req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
+        cl_req.file_id.persistent_id = compound_file_id.persistent_id;
+        cl_req.file_id.volatile_id= compound_file_id.volatile_id;
+
+        next_pdu = smb2_cmd_close_async(smb2, &cl_req, getallinfo_close_cb, QA_data);
+        if (next_pdu == NULL) {
+                QA_data->cb(smb2, -ENOMEM, NULL, QA_data->cb_data);
+                free(QA_data);
+                smb2_free_pdu(smb2, pdu);
+                return -1;
+        }
+        smb2_add_compound_pdu(smb2, pdu, next_pdu);
+
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
+}

@@ -525,6 +525,32 @@ struct smb2_file_all_info {
         uint8_t *name_information;
 };
 
+struct smb2_file_info_all {
+        uint32_t smb2_type;
+
+        uint32_t smb2_nlink;
+        uint64_t smb2_ino;
+        uint64_t smb2_size;
+
+        uint64_t smb2_atime;
+        uint64_t smb2_atime_nsec;
+        uint64_t smb2_mtime;
+        uint64_t smb2_mtime_nsec;
+        uint64_t smb2_ctime;
+        uint64_t smb2_ctime_nsec;
+        uint64_t smb2_crtime;
+        uint64_t smb2_crtime_nsec;
+
+        uint32_t file_attributes;
+
+        uint64_t allocation_size;
+        uint64_t end_of_file;
+        uint8_t delete_pending;
+        uint8_t directory;
+
+        uint32_t ea_size;
+};
+
 struct smb2_query_info_request {
         uint8_t info_type;
         uint8_t file_info_class;
