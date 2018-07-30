@@ -90,3 +90,8 @@ smb2_set_auth_mode
 smb2_query_file_all_info
 smb2_getinfo_async
 smb2_setinfo_async
+smb2_get_file_extended_info
+smb2_set_file_extended_info
+smb2_free_file_extended_info
+smb2_get_file_stream_info
+smb2_free_file_stream_info

@@ -1645,6 +1645,18 @@ getinfo_query_cb(struct smb2_context *smb2, uint32_t status,
                         struct smb2_file_standard_info *standard = rep->output_buffer;
                         (info->u_info).standard_info = *standard;
                 }
+                else if (info->file_info_class == SMB2_FILE_FULL_EA_INFORMATION)
+                {
+                        struct smb2_file_extended_info *extended = rep->output_buffer;
+                        (info->u_info).extended_info = extended;
+                        rep->output_buffer = NULL; // DONOT free here, it will be used and freed by caller.
+                }
+                else if (info->file_info_class == SMB2_FILE_STREAM_INFORMATION)
+                {
+                        struct smb2_file_stream_info *stream = rep->output_buffer;
+                        (info->u_info).stream_info = stream;
+                        rep->output_buffer = NULL; // DONOT free here, it will be used and freed by caller.
+                }
                 else if (info->file_info_class == SMB2_FILE_ALL_INFORMATION)
                 {
                         struct smb2_file_all_info *all_info = rep->output_buffer;
@@ -2135,6 +2147,9 @@ smb2_setinfo_async(struct smb2_context *smb2,
         } else if (info->file_info_class == SMB2_FILE_BASIC_INFORMATION) {
                 cr_req.desired_access = SMB2_FILE_WRITE_ATTRIBUTES |
                                         SMB2_FILE_WRITE_EA;
+        } else if (info->file_info_class == SMB2_FILE_FULL_EA_INFORMATION) {
+                cr_req.desired_access = SMB2_FILE_WRITE_ATTRIBUTES |
+                                        SMB2_FILE_WRITE_EA;
         } else if (info->file_info_class == SMB2_FILE_RENAME_INFORMATION) {
                 cr_req.desired_access = SMB2_GENERIC_READ |
                                         SMB2_FILE_READ_ATTRIBUTES |
@@ -2175,6 +2190,8 @@ smb2_setinfo_async(struct smb2_context *smb2,
                 si_req.input_data = &((info->u_info).eof_info);
         } else if (info->file_info_class == SMB2_FILE_BASIC_INFORMATION) {
                 si_req.input_data = &((info->u_info).basic_info);
+        } else if (info->file_info_class == SMB2_FILE_FULL_EA_INFORMATION) {
+                si_req.input_data = &((info->u_info).extended_info);
         }
 
         if (info->info_type == SMB2_0_INFO_SECURITY) {
@@ -2219,4 +2236,39 @@ smb2_setinfo_async(struct smb2_context *smb2,
         smb2_queue_pdu(smb2, pdu);
 
         return 0;
+}
+
+void smb2_free_file_extended_info(struct smb2_context *smb2,
+                                  struct smb2_file_extended_info *extended_info)
+{
+        struct smb2_file_extended_info *tmp_info = NULL;
+        if (extended_info == NULL)
+                return;
+
+        tmp_info = extended_info;
+
+        while (tmp_info) {
+                struct smb2_file_extended_info *node = tmp_info;
+                free(node->name);
+                free(node->value);
+                tmp_info = tmp_info->next;
+                smb2_free_data(smb2, node);
+        }
+}
+
+
+void smb2_free_file_stream_info(struct smb2_context *smb2,
+                                struct smb2_file_stream_info *stream_info)
+{
+        struct smb2_file_stream_info *tmp_info = NULL;
+        if (stream_info == NULL)
+                return;
+
+        tmp_info = stream_info;
+
+        while (tmp_info) {
+                struct smb2_file_stream_info *node = tmp_info;
+                tmp_info = tmp_info->next;
+                smb2_free_data(smb2, node);
+        }
 }

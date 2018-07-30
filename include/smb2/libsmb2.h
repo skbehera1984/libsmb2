@@ -90,9 +90,35 @@ struct smb2_file_info_all {
         uint32_t ea_size;
 };
 
+struct smb2_file_extended_info;
+
+struct smb2_file_extended_info {
+        uint8_t* name;
+        uint8_t name_len;
+        uint8_t* value;
+        uint16_t value_len;
+        struct smb2_file_extended_info *next;
+};
+
+struct smb2_file_full_extended_info {
+        uint8_t *eabuf;
+        uint32_t eabuf_len;
+};
+
+struct smb2_file_stream_info;
+
+struct smb2_file_stream_info {
+        char name[4096];
+        uint64_t size;
+        uint64_t allocation_size;
+        struct smb2_file_stream_info *next;
+};
+
 typedef union _file_info_union {
         struct smb2_file_basic_info           basic_info;
         struct smb2_file_standard_info        standard_info;
+        struct smb2_file_extended_info        *extended_info;
+        struct smb2_file_stream_info          *stream_info;
         struct smb2_file_all_info             all_info;
         struct smb2_security_descriptor       *security_info;
         struct smb2_file_fs_size_info         fs_size_info;
@@ -104,6 +130,7 @@ typedef union _file_info_union {
         struct smb2_file_end_of_file_info     eof_info;
         struct smb2_file_rename_info          rename_info;
         struct smb2_file_security_info        sec_info;
+        struct smb2_file_full_extended_info   full_extended_info;
 } smb2_file_info_U;
 
 typedef struct _file_info {
@@ -1030,6 +1057,45 @@ smb2_list_shares(struct smb2_context *smb2,
                  uint32_t   shinfo_type,
                  struct smb2_shareinfo **shares,
                  int *numshares);
+
+/* Sync smb2_get_file_extended_info()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ *@@:API user must call smb2_free_file_extended_info()
+ */
+uint32_t
+smb2_get_file_extended_info(struct smb2_context *smb2,
+                            const char *path,
+                            struct smb2_file_extended_info **extended_info);
+
+/* Sync smb2_set_file_extended_info()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ */
+uint32_t
+smb2_set_file_extended_info(struct smb2_context *smb2,
+                            const char *path,
+                            struct smb2_file_extended_info *extended_info,
+                            const int count);
+
+void smb2_free_file_extended_info(struct smb2_context *smb2,
+                                  struct smb2_file_extended_info *extended_info);
+
+/* Sync smb2_get_file_stream_info()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ *@@:API user must call smb2_free_file_stream_info()
+ */
+uint32_t
+smb2_get_file_stream_info(struct smb2_context *smb2,
+                          const char *path,
+                          struct smb2_file_stream_info **stream_info);
+
+void smb2_free_file_stream_info(struct smb2_context *smb2,
+                                struct smb2_file_stream_info *stream_info);
 
 /* Low 2 bits desctibe the type */
 #define SHARE_TYPE_DISKTREE  0

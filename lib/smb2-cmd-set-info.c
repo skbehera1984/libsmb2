@@ -165,6 +165,25 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         smb2_set_uint32(iov, 32, basic_info->file_attributes);
                 }
                 break;
+                case SMB2_FILE_FULL_EA_INFORMATION:
+                {
+                        struct smb2_file_full_extended_info *info = NULL;
+                        info = (struct smb2_file_full_extended_info *)req->input_data;
+
+                        smb2_set_uint32(iov, 4, info->eabuf_len); /* buffer length */
+
+                        buf = malloc(info->eabuf_len);
+                        if (buf == NULL) {
+                                smb2_set_error(smb2, "Failed to allocate set "
+                                                     "info data buffer");
+                                return -1;
+                        }
+                        memset(buf, 0, info->eabuf_len);
+                        iov = smb2_add_iovector(smb2, &pdu->out, buf, info->eabuf_len, free);
+                        memcpy(iov->buf, info->eabuf, info->eabuf_len);
+                        free(info->eabuf);
+                }
+                break;
                 default:
                         smb2_set_error(smb2, "Can not encode info_type/"
                                        "info_class %d/%d yet",

@@ -45,7 +45,6 @@
 #include "libsmb2.h"
 #include "libsmb2-private.h"
 
-
 static int
 smb2_encode_query_info_request(struct smb2_context *smb2,
                                struct smb2_pdu *pdu,
@@ -192,6 +191,28 @@ smb2_process_query_info_variable(struct smb2_context *smb2,
                                                            &vec)) {
                                 smb2_set_error(smb2, "could not decode file "
                                                "standard info. %s",
+                                               smb2_get_error(smb2));
+                                return -1;
+                        }
+                        break;
+                case SMB2_FILE_FULL_EA_INFORMATION:
+                        if (smb2->hdr.status == SMB2_STATUS_NO_EAS_ON_FILE)
+                                return 0;
+                        ptr = smb2_alloc_init(smb2,
+                                  sizeof(struct smb2_file_extended_info));
+                        if (smb2_decode_file_extended_info(smb2, ptr, &vec)) {
+                                smb2_set_error(smb2, "could not decode file "
+                                               "full ea info. %s",
+                                               smb2_get_error(smb2));
+                                return -1;
+                        }
+                        break;
+                case SMB2_FILE_STREAM_INFORMATION:
+                        ptr = smb2_alloc_init(smb2,
+                                  sizeof(struct smb2_file_stream_info));
+                        if (smb2_decode_file_stream_info(smb2, ptr, &vec)) {
+                                smb2_set_error(smb2, "could not decode file "
+                                               "stream info. %s",
                                                smb2_get_error(smb2));
                                 return -1;
                         }

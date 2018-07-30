@@ -1134,3 +1134,123 @@ int smb2_list_shares(struct smb2_context *smb2,
         smb2_disconnect_share(smb2);
         return status;
 }
+
+uint32_t
+smb2_get_file_extended_info(struct smb2_context *smb2,
+                            const char *path,
+                            struct smb2_file_extended_info **extended_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+
+        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
+                smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        *extended_info = info.u_info.extended_info;
+        return cb_data.status;
+}
+
+static uint32_t
+smb2_get_file_extended_size(struct smb2_file_extended_info *info,
+                            const int count)
+{
+        uint32_t size = 0;
+        int entries = 0;
+        struct smb2_file_extended_info* tmp_info = info;
+
+        while (entries < count) {
+                size += sizeof(struct smb2_file_full_ea_info)-
+                        (2*sizeof(uint8_t*));
+                size += tmp_info->name_len + 1;
+                size += tmp_info->value_len;
+
+                if ((size & 0x03) != 0) {
+                        uint32_t padlen = 0;
+                        padlen = 4 - (size & 0x03);
+                        size += padlen;
+                }
+                tmp_info++;
+                entries++;
+        };
+
+        return size;
+}
+
+uint32_t
+smb2_set_file_extended_info(struct smb2_context *smb2,
+                            const char *path,
+                            struct smb2_file_extended_info* extended_info,
+                            const int count)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        if (extended_info == NULL) {
+                smb2_set_error(smb2, "%s : no info to set");
+                return -1;
+        }
+
+        uint32_t eabuf_size = smb2_get_file_extended_size(extended_info, count);
+
+        struct smb2_file_full_extended_info full_extended_info;
+        full_extended_info.eabuf = (uint8_t*)malloc(eabuf_size);
+        full_extended_info.eabuf_len = 0;
+        smb2_encode_file_extended_info(smb2, extended_info, count,
+                                       full_extended_info.eabuf,
+                                       &full_extended_info.eabuf_len);
+
+        memset(&info, 0, sizeof(smb2_file_info));
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+        info.u_info.full_extended_info = full_extended_info;
+
+        if (smb2_setinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "%s failed : %s", __func__,
+                               smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
+}
+
+uint32_t
+smb2_get_file_stream_info(struct smb2_context *smb2,
+                          const char *path,
+                          struct smb2_file_stream_info **stream_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
+
+        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
+                smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        *stream_info = info.u_info.stream_info;
+        return cb_data.status;
+}
