@@ -40,6 +40,8 @@ smb2_mkdir_async
 smb2_share_enum_async
 smb2_open
 smb2_open_async
+smb2_open_file
+smb2_open_file_async
 smb2_opendir
 smb2_opendir_async
 smb2_parse_url

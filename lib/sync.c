@@ -180,6 +180,43 @@ static void open_cb(struct smb2_context *smb2, int status,
         cb_data->ptr = command_data;
 }
 
+struct smb2fh *
+smb2_open_file(struct smb2_context *smb2,
+               const char *path,
+               uint8_t  security_flags,
+               uint64_t smb_create_flags,
+               uint32_t desired_access,
+               uint32_t file_attributes,
+               uint32_t share_access,
+               uint32_t create_disposition,
+               uint32_t create_options
+              )
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+
+        if (smb2_open_file_async(smb2, path,
+                                 security_flags,
+                                 smb_create_flags,
+                                 desired_access,
+                                 file_attributes,
+                                 share_access,
+                                 create_disposition,
+                                 create_options,
+                                 open_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_open_file_async failed. Error - %s",
+                               smb2_get_error(smb2));
+                return NULL;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return NULL;
+        }
+
+        //return cb_data.status;
+        return cb_data.ptr;
+}
+
 struct smb2fh *smb2_open(struct smb2_context *smb2, const char *path, int flags)
 {
         struct sync_cb_data cb_data;

@@ -407,6 +407,33 @@ int smb2_open_async(struct smb2_context *smb2, const char *path, int flags,
  */
 struct smb2fh *smb2_open(struct smb2_context *smb2, const char *path, int flags);
 
+/* Async open_file()
+ */
+int
+smb2_open_file_async(struct smb2_context *smb2,
+                     const char *path,
+                     uint8_t  security_flags,
+                     uint64_t smb_create_flags,
+                     uint32_t desired_access,
+                     uint32_t file_attributes,
+                     uint32_t share_access,
+                     uint32_t create_disposition,
+                     uint32_t create_options,
+                     smb2_command_cb cb, void *cb_data);
+
+/* Sync open_file()
+ */
+struct smb2fh *
+smb2_open_file(struct smb2_context *smb2,
+               const char *path,
+               uint8_t  security_flags,
+               uint64_t smb_create_flags,
+               uint32_t desired_access,
+               uint32_t file_attributes,
+               uint32_t share_access,
+               uint32_t create_disposition,
+               uint32_t create_options);
+
 /*
  * CLOSE
  */
