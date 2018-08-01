@@ -1070,7 +1070,7 @@ smb2_set_file_basic_info_async(struct smb2_context *smb2,
 int
 smb2_set_file_basic_info(struct smb2_context *smb2,
                          const char *path,
-                         struct smb2_stat_64 *st);
+                         struct smb2_file_basic_info *info);
 
 #ifdef __cplusplus
 }

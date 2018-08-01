@@ -150,16 +150,25 @@ smb2_encode_set_info_request(struct smb2_context *smb2,
                         }
                         memset(buf, 0, len);
                         iov = smb2_add_iovector(smb2, &pdu->out, buf, len, free);
-                        memcpy(buf, basic_info, 40);
-                        smb2_set_uint64(iov, 0, timeval_to_win(&basic_info->creation_time));
-                        smb2_set_uint64(iov, 8, timeval_to_win(&basic_info->last_access_time));
-                        smb2_set_uint64(iov, 16, timeval_to_win(&basic_info->last_write_time));
-                        smb2_set_uint64(iov, 24, timeval_to_win(&basic_info->change_time));
+
+                        if (basic_info->creation_time.tv_sec !=0 || basic_info->creation_time.tv_usec != 0) {
+                                smb2_set_uint64(iov, 0, timeval_to_win(&basic_info->creation_time));
+                        }
+                        if (basic_info->last_access_time.tv_sec !=0 || basic_info->last_access_time.tv_usec != 0) {
+                                smb2_set_uint64(iov, 8, timeval_to_win(&basic_info->last_access_time));
+                        }
+                        if (basic_info->last_write_time.tv_sec !=0 || basic_info->last_write_time.tv_usec != 0) {
+                                smb2_set_uint64(iov, 16, timeval_to_win(&basic_info->last_write_time));
+                        }
+                        if (basic_info->change_time.tv_sec !=0 || basic_info->change_time.tv_usec != 0) {
+                                smb2_set_uint64(iov, 24, timeval_to_win(&basic_info->change_time));
+                        }
                         smb2_set_uint32(iov, 32, basic_info->file_attributes);
+                        //memcpy(buf, basic_info, 40);
                 }
                         break;
                 default:
-                        smb2_set_error(smb2, "Can not enccode info_type/"
+                        smb2_set_error(smb2, "Can not encode info_type/"
                                        "info_class %d/%d yet",
                                        req->info_type,
                                        req->file_info_class);

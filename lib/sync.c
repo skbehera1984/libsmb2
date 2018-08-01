@@ -1103,18 +1103,17 @@ int smb2_list_shares(struct smb2_context *smb2,
 int
 smb2_set_file_basic_info(struct smb2_context *smb2,
                          const char *path,
-                         struct smb2_stat_64 *st)
+                         struct smb2_file_basic_info *info)
 {
         struct sync_cb_data cb_data;
-        struct smb2_file_basic_info info;
+        cb_data.is_finished = 0;
 
-        if (st == NULL) {
+        if (info == NULL) {
                 smb2_set_error(smb2, "%s : no info to set");
                 return -1;
         }
-
-        cb_data.is_finished = 0;
-
+#if 0
+        struct smb2_stat_64 *st
 		info.creation_time.tv_sec =  st->smb2_crtime;
 		info.creation_time.tv_usec = st->smb2_crtime_nsec/1000;
 		info.last_access_time.tv_sec =  st->smb2_atime;
@@ -1127,8 +1126,8 @@ smb2_set_file_basic_info(struct smb2_context *smb2,
         if (st->smb2_type == SMB2_TYPE_DIRECTORY) {
                 info.file_attributes &= SMB2_FILE_ATTRIBUTE_DIRECTORY;
         }
-
-        if (smb2_set_file_basic_info_async(smb2, path, &info,
+#endif
+        if (smb2_set_file_basic_info_async(smb2, path, info,
                                            generic_status_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
                 return -1;
