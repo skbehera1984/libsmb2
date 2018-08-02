@@ -251,19 +251,18 @@ static void close_cb(struct smb2_context *smb2, int status,
 int smb2_close(struct smb2_context *smb2, struct smb2fh *fh)
 {
         struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
 
-	cb_data.is_finished = 0;
-
-	if (smb2_close_async(smb2, fh, close_cb, &cb_data) != 0) {
-		smb2_set_error(smb2, "smb2_close_async failed");
-		return -1;
-	}
-
-	if (wait_for_reply(smb2, &cb_data) < 0) {
+        if (smb2_close_async(smb2, fh, close_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_close_async failed");
                 return -1;
         }
 
-	return cb_data.status;
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
 }
 
 /*

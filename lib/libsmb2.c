@@ -939,22 +939,91 @@ free_smb2fh(struct smb2fh *fh)
 }
 
 static void
-open_cb(struct smb2_context *smb2, int status,
-        void *command_data, void *private_data)
+close_cb(struct smb2_context *smb2, int status,
+         void *command_data, void *private_data)
 {
         struct smb2fh *fh = private_data;
-        struct smb2_create_reply *rep = command_data;
 
-        if (status != SMB2_STATUS_SUCCESS) {
-                fh->cb(smb2, -nterror_to_errno(status),
-                       NULL, fh->cb_data);
-                free_smb2fh(fh);
+        if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_FILE_CLOSED) {
+                smb2_set_error(smb2, "Close failed with (0x%08x) %s",
+                               status, nterror_to_str(status));
+                fh->cb(smb2, -nterror_to_errno(status), NULL, fh->cb_data);
                 return;
         }
 
-        fh->file_id.persistent_id = rep->file_id.persistent_id;
-        fh->file_id.volatile_id = rep->file_id.volatile_id;
-        fh->cb(smb2, 0, fh, fh->cb_data);
+        fh->cb(smb2, 0, NULL, fh->cb_data);
+        free_smb2fh(fh);
+}
+
+int
+smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
+                 smb2_command_cb cb, void *cb_data)
+{
+        struct smb2_close_request req;
+        struct smb2_pdu *pdu;
+
+        fh->cb = cb;
+        fh->cb_data = cb_data;
+
+        memset(&req, 0, sizeof(struct smb2_close_request));
+        req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
+        req.file_id.persistent_id = fh->file_id.persistent_id;
+        req.file_id.volatile_id = fh->file_id.volatile_id;
+
+        pdu = smb2_cmd_close_async(smb2, &req, close_cb, fh);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create close command");
+                return -ENOMEM;
+        }
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
+}
+
+typedef struct _create_cb_data {
+        smb2_command_cb cb;
+        void *cb_data;
+        uint32_t status;
+        uint8_t needToClose:1;
+        struct smb2fh *fh;
+} create_callback_data;
+
+static void
+open_cb(struct smb2_context *smb2, int status,
+        void *command_data, void *private_data)
+{
+        create_callback_data *create_data = private_data;
+        struct smb2_create_reply *rep = command_data;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "SMB2_CREATE failed - %s", smb2_get_error(smb2));
+                create_data->cb(smb2, -nterror_to_errno(status),
+                                   NULL, create_data->cb_data);
+                free_smb2fh(create_data->fh);
+                free(create_data);
+                return;
+        }
+        create_data->status = status;
+
+        if (create_data->needToClose) {
+                if (smb2_close_async(smb2, create_data->fh,
+                                     create_data->cb, create_data->cb_data) != 0) {
+                        smb2_set_error(smb2, "SMB2_CLOSE failed - %s", smb2_get_error(smb2));
+                }
+                //free_smb2fh(create_data->fh);
+                create_data->fh = NULL;
+                free(create_data);
+                return;
+        } else {
+                (create_data->fh)->file_id.persistent_id = rep->file_id.persistent_id;
+                (create_data->fh)->file_id.volatile_id = rep->file_id.volatile_id;
+                create_data->cb(smb2, 0, create_data->fh, create_data->cb_data);
+
+                create_data->fh = NULL;
+                free(create_data);
+        }
+
+        return;
 }
 
 int
@@ -969,25 +1038,44 @@ smb2_open_file_async(struct smb2_context *smb2,
                      uint32_t create_options,
                      smb2_command_cb cb, void *cb_data)
 {
-        struct smb2fh *fh;
+        create_callback_data *create_data = NULL;
         struct smb2_create_request req;
         struct smb2_pdu *pdu;
 
-        fh = malloc(sizeof(struct smb2fh));
-        if (fh == NULL) {
+        create_data = malloc(sizeof(create_callback_data));
+        if (create_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate create_callback_data");
+                return -ENOMEM;
+        }
+        memset(create_data, 0, sizeof(create_callback_data));
+
+        create_data->fh = malloc(sizeof(struct smb2fh));
+        if (create_data->fh == NULL) {
                 smb2_set_error(smb2, "Failed to allocate smbfh");
                 return -ENOMEM;
         }
-        memset(fh, 0, sizeof(struct smb2fh));
+        memset(create_data->fh, 0, sizeof(struct smb2fh));
 
-        fh->cb = cb;
-        fh->cb_data = cb_data;
+        create_data->cb = cb;
+        create_data->cb_data = cb_data;
+        create_data->needToClose = 0;
 
-        create_options |= SMB2_FILE_NON_DIRECTORY_FILE;
+        if (create_options & SMB2_FILE_DELETE_ON_CLOSE) {
+                create_data->needToClose = 1;
+        }
+        if ((create_options & SMB2_FILE_DIRECTORY_FILE)
+            && (create_disposition == SMB2_FILE_CREATE)) {
+                create_data->needToClose = 1;
+        }
+
+        // TODO - is this needed?
+        //create_options |= SMB2_FILE_NON_DIRECTORY_FILE;
 
         memset(&req, 0, sizeof(struct smb2_create_request));
+        req.security_flags         = security_flags;
         req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
         req.impersonation_level    = SMB2_IMPERSONATION_IMPERSONATION;
+        req.smb_create_flags       = smb_create_flags;
         req.desired_access         = desired_access;
         req.file_attributes        = file_attributes;
         req.share_access           = share_access;
@@ -995,7 +1083,7 @@ smb2_open_file_async(struct smb2_context *smb2,
         req.create_options         = create_options;
         req.name = path;
 
-        pdu = smb2_cmd_create_async(smb2, &req, open_cb, fh);
+        pdu = smb2_cmd_create_async(smb2, &req, open_cb, create_data);
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create create command");
                 return -ENOMEM;
@@ -1065,47 +1153,73 @@ smb2_open_async(struct smb2_context *smb2, const char *path, int flags,
                                     cb, cb_data);
 }
 
-static void
-close_cb(struct smb2_context *smb2, int status,
-         void *command_data, void *private_data)
-{
-        struct smb2fh *fh = private_data;
-
-        if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "Close failed with (0x%08x) %s",
-                               status, nterror_to_str(status));
-                fh->cb(smb2, -nterror_to_errno(status), NULL, fh->cb_data);
-                free_smb2fh(fh);
-                return;
-        }
-
-        fh->cb(smb2, 0, NULL, fh->cb_data);
-        free_smb2fh(fh);
-}
-        
 int
-smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
+smb2_mkdir_async(struct smb2_context *smb2, const char *path,
                  smb2_command_cb cb, void *cb_data)
 {
-        struct smb2_close_request req;
-        struct smb2_pdu *pdu;
+        uint32_t file_attributes = 0;
+        uint32_t desired_access = 0;
+        uint32_t share_access = 0;
+        uint32_t create_disposition = 0;
+        uint32_t create_options = 0;
 
-        fh->cb = cb;
-        fh->cb_data = cb_data;
+        desired_access = SMB2_FILE_READ_ATTRIBUTES;
+        file_attributes = SMB2_FILE_ATTRIBUTE_DIRECTORY;
+        share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
+        create_disposition = SMB2_FILE_CREATE;
+        create_options = SMB2_FILE_DIRECTORY_FILE;
 
-        memset(&req, 0, sizeof(struct smb2_close_request));
-        req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        req.file_id.persistent_id = fh->file_id.persistent_id;
-        req.file_id.volatile_id = fh->file_id.volatile_id;
+        return smb2_open_file_async(smb2, path,
+                                    0, 0, desired_access,
+                                    file_attributes,
+                                    share_access,
+                                    create_disposition,
+                                    create_options,
+                                    cb, cb_data);
+}
 
-        pdu = smb2_cmd_close_async(smb2, &req, close_cb, fh);
-        if (pdu == NULL) {
-                smb2_set_error(smb2, "Failed to create close command");
-                return -ENOMEM;
+static int
+smb2_unlink_internal(struct smb2_context *smb2, const char *path,
+                     int is_dir,
+                     smb2_command_cb cb, void *cb_data)
+{
+        uint32_t file_attributes = 0;
+        uint32_t desired_access = 0;
+        uint32_t share_access = 0;
+        uint32_t create_disposition = 0;
+        uint32_t create_options = 0;
+
+        desired_access = SMB2_DELETE;
+        if (is_dir) {
+                file_attributes = SMB2_FILE_ATTRIBUTE_DIRECTORY;
+        } else {
+                file_attributes = SMB2_FILE_ATTRIBUTE_NORMAL;
         }
-        smb2_queue_pdu(smb2, pdu);
+        share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE | SMB2_FILE_SHARE_DELETE;
+        create_disposition = SMB2_FILE_OPEN;
+        create_options = SMB2_FILE_DELETE_ON_CLOSE;
 
-        return 0;
+        return smb2_open_file_async(smb2, path,
+                                    0, 0, desired_access,
+                                    file_attributes,
+                                    share_access,
+                                    create_disposition,
+                                    create_options,
+                                    cb, cb_data);
+}
+
+int
+smb2_unlink_async(struct smb2_context *smb2, const char *path,
+                  smb2_command_cb cb, void *cb_data)
+{
+        return smb2_unlink_internal(smb2, path, 0, cb, cb_data);
+}
+
+int
+smb2_rmdir_async(struct smb2_context *smb2, const char *path,
+                 smb2_command_cb cb, void *cb_data)
+{
+        return smb2_unlink_internal(smb2, path, 1, cb, cb_data);
 }
 
 static void
@@ -1375,155 +1489,6 @@ smb2_lseek(struct smb2_context *smb2, struct smb2fh *fh,
                                whence);
                 return -EINVAL;
         }
-}
-
-struct create_cb_data {
-        smb2_command_cb cb;
-        void *cb_data;
-};
-
-static void
-create_cb_2(struct smb2_context *smb2, int status,
-            void *command_data, void *private_data)
-{
-        struct create_cb_data *create_data = private_data;
-
-        if (status != SMB2_STATUS_SUCCESS) {
-                create_data->cb(smb2, -nterror_to_errno(status),
-                       NULL, create_data->cb_data);
-                free(create_data);
-                return;
-        }
-
-        create_data->cb(smb2, 0, NULL, create_data->cb_data);
-        free(create_data);
-}
-
-static void
-create_cb_1(struct smb2_context *smb2, int status,
-            void *command_data, void *private_data)
-{
-        struct create_cb_data *create_data = private_data;
-        struct smb2_create_reply *rep = command_data;
-        struct smb2_close_request req;
-        struct smb2_pdu *pdu;
-
-        if (status != SMB2_STATUS_SUCCESS) {
-                create_data->cb(smb2, -nterror_to_errno(status),
-                       NULL, create_data->cb_data);
-                free(create_data);
-                return;
-        }
-
-        memset(&req, 0, sizeof(struct smb2_close_request));
-        req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
-        req.file_id.persistent_id = rep->file_id.persistent_id;
-        req.file_id.volatile_id = rep->file_id.volatile_id;
-
-        pdu = smb2_cmd_close_async(smb2, &req, create_cb_2, create_data);
-        if (pdu == NULL) {
-                create_data->cb(smb2, -ENOMEM, NULL, create_data->cb_data);
-                free(create_data);
-                return;
-        }
-        smb2_queue_pdu(smb2, pdu);
-}
-
-static int
-smb2_unlink_internal(struct smb2_context *smb2, const char *path,
-                     int is_dir,
-                     smb2_command_cb cb, void *cb_data)
-{
-        struct create_cb_data *create_data;
-        struct smb2_create_request req;
-        struct smb2_pdu *pdu;
-
-        create_data = malloc(sizeof(struct create_cb_data));
-        if (create_data == NULL) {
-                smb2_set_error(smb2, "Failed to allocate create_data");
-                return -ENOMEM;
-        }
-        memset(create_data, 0, sizeof(struct create_cb_data));
-
-        create_data->cb = cb;
-        create_data->cb_data = cb_data;
-
-
-        memset(&req, 0, sizeof(struct smb2_create_request));
-        req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
-        req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
-        req.desired_access = SMB2_DELETE;
-        if (is_dir) {
-                req.file_attributes = SMB2_FILE_ATTRIBUTE_DIRECTORY;
-        } else {
-                req.file_attributes = SMB2_FILE_ATTRIBUTE_NORMAL;
-        }
-        req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE |
-                SMB2_FILE_SHARE_DELETE;
-        req.create_disposition = SMB2_FILE_OPEN;
-        req.create_options = SMB2_FILE_DELETE_ON_CLOSE;
-        req.name = path;
-
-        pdu = smb2_cmd_create_async(smb2, &req, create_cb_1, create_data);
-        if (pdu == NULL) {
-                smb2_set_error(smb2, "Failed to create create command");
-                return -ENOMEM;
-        }
-        smb2_queue_pdu(smb2, pdu);
-
-        return 0;
-}
-
-int
-smb2_unlink_async(struct smb2_context *smb2, const char *path,
-                  smb2_command_cb cb, void *cb_data)
-{
-        return smb2_unlink_internal(smb2, path, 0, cb, cb_data);
-}
-
-int
-smb2_rmdir_async(struct smb2_context *smb2, const char *path,
-                 smb2_command_cb cb, void *cb_data)
-{
-        return smb2_unlink_internal(smb2, path, 1, cb, cb_data);
-}
-
-int
-smb2_mkdir_async(struct smb2_context *smb2, const char *path,
-                 smb2_command_cb cb, void *cb_data)
-{
-        struct create_cb_data *create_data;
-        struct smb2_create_request req;
-        struct smb2_pdu *pdu;
-
-        create_data = malloc(sizeof(struct create_cb_data));
-        if (create_data == NULL) {
-                smb2_set_error(smb2, "Failed to allocate create_data");
-                return -ENOMEM;
-        }
-        memset(create_data, 0, sizeof(struct create_cb_data));
-
-        create_data->cb = cb;
-        create_data->cb_data = cb_data;
-
-        memset(&req, 0, sizeof(struct smb2_create_request));
-        req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
-        req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
-        req.desired_access = SMB2_FILE_READ_ATTRIBUTES;
-        req.file_attributes = SMB2_FILE_ATTRIBUTE_DIRECTORY;
-        req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
-        req.create_disposition = SMB2_FILE_CREATE;
-        req.create_options = SMB2_FILE_DIRECTORY_FILE;
-        req.name = path;
-
-        pdu = smb2_cmd_create_async(smb2, &req, create_cb_1, create_data);
-        if (pdu == NULL) {
-                smb2_set_error(smb2, "Failed to create create command");
-                return -ENOMEM;
-        }
-        smb2_queue_pdu(smb2, pdu);
-
-        return 0;
 }
 
 struct stat_cb_data {
@@ -2054,6 +2019,11 @@ smb2_rename_async(struct smb2_context *smb2, const char *oldpath,
 
         return 0;
 }
+
+struct create_cb_data {
+        smb2_command_cb cb;
+        void *cb_data;
+};
 
 static void
 ftrunc_cb_1(struct smb2_context *smb2, int status,
