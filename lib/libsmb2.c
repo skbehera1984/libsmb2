@@ -1030,6 +1030,7 @@ int
 smb2_open_file_async(struct smb2_context *smb2,
                      const char *path,
                      uint8_t  security_flags,
+                     uint32_t impersonation_level,
                      uint64_t smb_create_flags,
                      uint32_t desired_access,
                      uint32_t file_attributes,
@@ -1074,7 +1075,7 @@ smb2_open_file_async(struct smb2_context *smb2,
         memset(&req, 0, sizeof(struct smb2_create_request));
         req.security_flags         = security_flags;
         req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
-        req.impersonation_level    = SMB2_IMPERSONATION_IMPERSONATION;
+        req.impersonation_level    = impersonation_level;
         req.smb_create_flags       = smb_create_flags;
         req.desired_access         = desired_access;
         req.file_attributes        = file_attributes;
@@ -1144,6 +1145,53 @@ smb2_open_async(struct smb2_context *smb2, const char *path, int flags,
 
         return smb2_open_file_async(smb2, path,
                                     security_flags,
+                                    SMB2_IMPERSONATION_IMPERSONATION,
+                                    smb_create_flags,
+                                    desired_access,
+                                    file_attributes,
+                                    share_access,
+                                    create_disposition,
+                                    create_options,
+                                    cb, cb_data);
+}
+
+int
+smb2_open_pipe_async(struct smb2_context *smb2,
+                     const char *pipe,
+                     smb2_command_cb cb, void *cb_data)
+{
+        uint8_t  security_flags = 0;
+        uint64_t smb_create_flags = 0;
+        uint32_t desired_access = 0;
+        uint32_t file_attributes = 0;
+        uint32_t share_access = 0;
+        uint32_t create_disposition = 0;
+        uint32_t create_options = 0;
+        uint32_t impersonation_level = 0;
+
+        create_disposition = SMB2_FILE_OPEN;
+        create_options = SMB2_FILE_OPEN_NO_RECALL | SMB2_FILE_NON_DIRECTORY_FILE;
+        desired_access |= SMB2_FILE_WRITE_DATA | SMB2_FILE_WRITE_EA |
+                          SMB2_FILE_WRITE_ATTRIBUTES;
+
+        if (strcasecmp(pipe, "srvsvc") == 0) {
+                impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
+                desired_access = 0x0012019f;
+                share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE | SMB2_FILE_SHARE_DELETE;
+        } else if (strcasecmp(pipe, "wkssvc") == 0) {
+                impersonation_level = SMB2_IMPERSONATION_IDENTIFICATION;
+                desired_access = 0x0012019f;
+                share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE | SMB2_FILE_SHARE_DELETE;
+        } else if (strcasecmp(pipe, "lsarpc") == 0) {
+                impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
+                desired_access = 0x0002019f;
+                share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
+                create_options = 0x00000000;
+        }
+
+        return smb2_open_file_async(smb2, pipe,
+                                    security_flags,
+                                    impersonation_level,
                                     smb_create_flags,
                                     desired_access,
                                     file_attributes,
@@ -1162,6 +1210,7 @@ smb2_mkdir_async(struct smb2_context *smb2, const char *path,
         uint32_t share_access = 0;
         uint32_t create_disposition = 0;
         uint32_t create_options = 0;
+        uint64_t smb_create_flags = 0;
 
         desired_access = SMB2_FILE_READ_ATTRIBUTES;
         file_attributes = SMB2_FILE_ATTRIBUTE_DIRECTORY;
@@ -1170,7 +1219,9 @@ smb2_mkdir_async(struct smb2_context *smb2, const char *path,
         create_options = SMB2_FILE_DIRECTORY_FILE;
 
         return smb2_open_file_async(smb2, path,
-                                    0, 0, desired_access,
+                                    0, SMB2_IMPERSONATION_IMPERSONATION,
+                                    smb_create_flags,
+                                    desired_access,
                                     file_attributes,
                                     share_access,
                                     create_disposition,
@@ -1188,6 +1239,7 @@ smb2_unlink_internal(struct smb2_context *smb2, const char *path,
         uint32_t share_access = 0;
         uint32_t create_disposition = 0;
         uint32_t create_options = 0;
+        uint64_t smb_create_flags = 0;
 
         desired_access = SMB2_DELETE;
         if (is_dir) {
@@ -1200,7 +1252,9 @@ smb2_unlink_internal(struct smb2_context *smb2, const char *path,
         create_options = SMB2_FILE_DELETE_ON_CLOSE;
 
         return smb2_open_file_async(smb2, path,
-                                    0, 0, desired_access,
+                                    0, SMB2_IMPERSONATION_IMPERSONATION,
+                                    smb_create_flags,
+                                    desired_access,
                                     file_attributes,
                                     share_access,
                                     create_disposition,
@@ -2535,39 +2589,6 @@ smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create ioctl command : %s",
                                smb2_get_error(smb2));
-                return -ENOMEM;
-        }
-        smb2_queue_pdu(smb2, pdu);
-
-        return 0;
-}
-
-int
-smb2_open_pipe_async(struct smb2_context *smb2,
-                     struct smb2_create_request *req,
-                     smb2_command_cb cb, void *cb_data)
-{
-        struct smb2fh *fh;
-        struct smb2_pdu *pdu;
-
-        if (req == NULL) {
-                smb2_set_error(smb2, "request param not provided");
-                return -ENOMEM;
-        }
-
-        fh = malloc(sizeof(struct smb2fh));
-        if (fh == NULL) {
-                smb2_set_error(smb2, "Failed to allocate smbfh");
-                return -ENOMEM;
-        }
-        memset(fh, 0, sizeof(struct smb2fh));
-
-        fh->cb = cb;
-        fh->cb_data = cb_data;
-
-        pdu = smb2_cmd_create_async(smb2, req, open_cb, fh);
-        if (pdu == NULL) {
-                smb2_set_error(smb2, "Failed to create create command");
                 return -ENOMEM;
         }
         smb2_queue_pdu(smb2, pdu);

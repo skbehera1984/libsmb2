@@ -413,6 +413,7 @@ int
 smb2_open_file_async(struct smb2_context *smb2,
                      const char *path,
                      uint8_t  security_flags,
+                     uint32_t impersonation_level,
                      uint64_t smb_create_flags,
                      uint32_t desired_access,
                      uint32_t file_attributes,
@@ -433,6 +434,33 @@ smb2_open_file(struct smb2_context *smb2,
                uint32_t share_access,
                uint32_t create_disposition,
                uint32_t create_options);
+
+/* Async open_pipe()
+ *
+ * Returns
+ *  0     : The operation was initiated. Result of the operation will be
+ *          reported through the callback function.
+ * -errno : There was an error. The callback function will not be invoked.
+ *
+ * When the callback is invoked, status indicates the result:
+ *      0 : Success.
+ *          Command_data is struct smb2fh.
+ *          This structure is freed using smb2_close().
+ * -errno : An error occured.
+ *          Command_data is NULL.
+ */
+int smb2_open_pipe_async(struct smb2_context *smb2,
+                         const char *pipe,
+                         smb2_command_cb cb,
+                         void *cb_data);
+
+/*
+ * Sync open_pipe()
+ *
+ * Returns NULL on failure.
+ */
+struct smb2fh *smb2_open_pipe(struct smb2_context *smb2,
+                              const char *pipe);
 
 /*
  * CLOSE
@@ -965,33 +993,6 @@ int smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
                 uint32_t ioctl_ctl, uint32_t ioctl_flags,
                uint8_t *input_buffer, uint32_t input_count,
                uint8_t *output_buffer, uint32_t *output_count);
-
-/* Async open_pipe()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success.
- *          Command_data is struct smb2fh.
- *          This structure is freed using smb2_close().
- * -errno : An error occured.
- *          Command_data is NULL.
- */
-int smb2_open_pipe_async(struct smb2_context *smb2,
-                         struct smb2_create_request *cr_req,
-                         smb2_command_cb cb,
-                         void *cb_data);
-
-/*
- * Sync open_pipe()
- *
- * Returns NULL on failure.
- */
-struct smb2fh *smb2_open_pipe(struct smb2_context *smb2,
-                              const char *pipe);
 
 #define SHARE_STYPE_DISKTREE    0x00000000
 #define SHARE_STYPE_PRINTQ      0x00000001
