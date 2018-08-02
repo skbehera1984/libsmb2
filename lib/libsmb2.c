@@ -1009,23 +1009,13 @@ int
 smb2_open_async(struct smb2_context *smb2, const char *path, int flags,
                 smb2_command_cb cb, void *cb_data)
 {
-        struct smb2fh *fh;
-        struct smb2_create_request req;
-        struct smb2_pdu *pdu;
+        uint8_t  security_flags = 0;
+        uint64_t smb_create_flags = 0;
         uint32_t desired_access = 0;
+        uint32_t file_attributes = 0;
+        uint32_t share_access = 0;
         uint32_t create_disposition = 0;
         uint32_t create_options = 0;
-        uint32_t file_attributes = 0;
-
-        fh = malloc(sizeof(struct smb2fh));
-        if (fh == NULL) {
-                smb2_set_error(smb2, "Failed to allocate smbfh");
-                return -ENOMEM;
-        }
-        memset(fh, 0, sizeof(struct smb2fh));
-
-        fh->cb = cb;
-        fh->cb_data = cb_data;
 
         /* Create disposition */
         if (flags & O_CREAT) {
@@ -1057,30 +1047,22 @@ smb2_open_async(struct smb2_context *smb2, const char *path, int flags,
         /* create options */
         create_options |= SMB2_FILE_NON_DIRECTORY_FILE;
 
-
         if (flags & O_SYNC) {
                 desired_access |= SMB2_SYNCHRONIZE;
                 create_options |= SMB2_FILE_NO_INTERMEDIATE_BUFFERING;
         }
 
-        memset(&req, 0, sizeof(struct smb2_create_request));
-        req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
-        req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
-        req.desired_access = desired_access;
-        req.file_attributes = file_attributes;
-        req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
-        req.create_disposition = create_disposition;
-        req.create_options = create_options;
-        req.name = path;
+        share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
 
-        pdu = smb2_cmd_create_async(smb2, &req, open_cb, fh);
-        if (pdu == NULL) {
-                smb2_set_error(smb2, "Failed to create create command");
-                return -ENOMEM;
-        }
-        smb2_queue_pdu(smb2, pdu);
-
-        return 0;
+        return smb2_open_file_async(smb2, path,
+                                    security_flags,
+                                    smb_create_flags,
+                                    desired_access,
+                                    file_attributes,
+                                    share_access,
+                                    create_disposition,
+                                    create_options,
+                                    cb, cb_data);
 }
 
 static void
