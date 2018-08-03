@@ -330,6 +330,7 @@ static void generic_status_cb(struct smb2_context *smb2, int status,
         struct sync_cb_data *cb_data = private_data;
 
         cb_data->is_finished = 1;
+        cb_data->ptr = command_data;
         cb_data->status = status;
 }
 
@@ -494,20 +495,66 @@ int smb2_stat(struct smb2_context *smb2, const char *path,
               struct smb2_stat_64 *st)
 {
         struct sync_cb_data cb_data;
+	    cb_data.is_finished = 0;
+        smb2_file_info info;
 
-	cb_data.is_finished = 0;
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_ALL_INFORMATION;
 
-	if (smb2_stat_async(smb2, path, st,
-                            generic_status_cb, &cb_data) != 0) {
-		smb2_set_error(smb2, "smb2_stat_async failed");
-		return -1;
-	}
-
-	if (wait_for_reply(smb2, &cb_data) < 0) {
+        if (smb2_getinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
                 return -1;
         }
 
-	return cb_data.status;
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        st->smb2_type = SMB2_TYPE_FILE;
+        if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
+                st->smb2_type = SMB2_TYPE_DIRECTORY;
+        }
+        st->smb2_nlink      = info.u_info.all_info.standard.number_of_links;
+        st->smb2_ino        = info.u_info.all_info.index_number;
+        st->smb2_size       = info.u_info.all_info.standard.end_of_file;
+        st->smb2_atime      = info.u_info.all_info.basic.last_access_time.tv_sec;
+        st->smb2_atime_nsec = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
+        st->smb2_mtime      = info.u_info.all_info.basic.last_write_time.tv_sec;
+        st->smb2_mtime_nsec = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
+        st->smb2_ctime      = info.u_info.all_info.basic.change_time.tv_sec;
+        st->smb2_ctime_nsec = info.u_info.all_info.basic.change_time.tv_usec * 1000;
+        st->smb2_crtime      = info.u_info.all_info.basic.creation_time.tv_sec;
+        st->smb2_crtime_nsec = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
+
+        return cb_data.status;
+}
+
+int smb2_statvfs(struct smb2_context *smb2, const char *path,
+                 struct smb2_statvfs *st)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILESYSTEM;
+        info.file_info_class = SMB2_FILE_FS_FULL_SIZE_INFORMATION;
+
+        if (smb2_getinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        memset(st, 0, sizeof(struct smb2_statvfs));
+        st->f_bsize = st->f_frsize = info.u_info.fs_full_size_info.bytes_per_sector *
+                                     info.u_info.fs_full_size_info.sectors_per_allocation_unit;
+        st->f_blocks = info.u_info.fs_full_size_info.total_allocation_units;
+        st->f_bfree = st->f_bavail = info.u_info.fs_full_size_info.caller_available_allocation_units;
+
+        return cb_data.status;
 }
 
 int smb2_query_file_all_info(struct smb2_context *smb2,
@@ -550,25 +597,6 @@ int smb2_rename(struct smb2_context *smb2, const char *oldpath,
                 return -1;
         }
 
-	return cb_data.status;
-}
-
-int smb2_statvfs(struct smb2_context *smb2, const char *path,
-                 struct smb2_statvfs *st)
-{
-        struct sync_cb_data cb_data;
-
-	cb_data.is_finished = 0;
-
-	if (smb2_statvfs_async(smb2, path, st,
-                               generic_status_cb, &cb_data) != 0) {
-		smb2_set_error(smb2, "smb2_statvfs_async failed");
-		return -1;
-	}
-
-	if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
 	return cb_data.status;
 }
 

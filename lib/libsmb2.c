@@ -1637,144 +1637,217 @@ smb2_fstat_async(struct smb2_context *smb2, struct smb2fh *fh,
         return 0;
 }
 
+typedef struct _getinfo_cb_data {
+        smb2_command_cb cb;
+        void            *cb_data;
+        uint32_t        status;
+        void            *info; // not allocated so don't free
+} getinfo_cb_data;
+
 static void
-getinfo_cb_3(struct smb2_context *smb2, int status,
-             void *command_data _U_, void *private_data)
+getinfo_create_cb(struct smb2_context *smb2, int status,
+                  void *command_data _U_, void *private_data)
 {
-        struct stat_cb_data *stat_data = private_data;
+        getinfo_cb_data *getinfo_data = private_data;
 
-        if (stat_data->status == SMB2_STATUS_SUCCESS) {
-                stat_data->status = status;
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "Open failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                getinfo_data->cb(smb2, -nterror_to_errno(status), NULL, getinfo_data->cb_data);
+                getinfo_data->status = status;
+                return;
         }
-
-        stat_data->cb(smb2, -nterror_to_errno(stat_data->status),
-                      stat_data->st, stat_data->cb_data);
-        free(stat_data);
+        getinfo_data->status = status;
 }
 
 static void
-getinfo_cb_2(struct smb2_context *smb2, int status,
-             void *command_data, void *private_data)
+getinfo_close_cb(struct smb2_context *smb2, int status,
+                 void *command_data _U_, void *private_data)
 {
-        struct stat_cb_data *stat_data = private_data;
-        struct smb2_query_info_reply *rep = command_data;
+        getinfo_cb_data *getinfo_data = private_data;
 
-        if (stat_data->status == SMB2_STATUS_SUCCESS) {
-                stat_data->status = status;
+        if (getinfo_data->status != SMB2_STATUS_SUCCESS) {
+                return;
         }
-        if (stat_data->status != SMB2_STATUS_SUCCESS) {
+        getinfo_data->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "CloseFile failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                getinfo_data->cb(smb2, -nterror_to_errno(status), NULL, getinfo_data->cb_data);
                 return;
         }
 
-        if (stat_data->info_type == SMB2_0_INFO_FILE &&
-            stat_data->file_info_class == SMB2_FILE_ALL_INFORMATION) {
-                struct smb2_stat_64 *st = stat_data->st;
-                struct smb2_file_all_info *fs = rep->output_buffer;
-
-                st->smb2_type = SMB2_TYPE_FILE;
-                if (fs->basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
-                        st->smb2_type = SMB2_TYPE_DIRECTORY;
-                }
-                st->smb2_nlink      = fs->standard.number_of_links;
-                st->smb2_ino        = fs->index_number;
-                st->smb2_size       = fs->standard.end_of_file;
-                st->smb2_atime      = fs->basic.last_access_time.tv_sec;
-                st->smb2_atime_nsec = fs->basic.last_access_time.tv_usec *
-                        1000;
-                st->smb2_mtime      = fs->basic.last_write_time.tv_sec;
-                st->smb2_mtime_nsec = fs->basic.last_write_time.tv_usec *
-                        1000;
-                st->smb2_ctime      = fs->basic.change_time.tv_sec;
-                st->smb2_ctime_nsec = fs->basic.change_time.tv_usec *
-                        1000;
-                st->smb2_crtime      = fs->basic.creation_time.tv_sec;
-                st->smb2_crtime_nsec = fs->basic.creation_time.tv_usec *
-                        1000;
-        } else if (stat_data->info_type == SMB2_0_INFO_FILESYSTEM &&
-                   stat_data->file_info_class == SMB2_FILE_FS_FULL_SIZE_INFORMATION) {
-                struct smb2_statvfs *statvfs = stat_data->st;
-                struct smb2_file_fs_full_size_info *vfs = rep->output_buffer;
-
-                memset(statvfs, 0, sizeof(struct smb2_statvfs));
-                statvfs->f_bsize = statvfs->f_frsize =
-                        vfs->bytes_per_sector *
-                        vfs->sectors_per_allocation_unit;
-                statvfs->f_blocks = vfs->total_allocation_units;
-                statvfs->f_bfree = statvfs->f_bavail =
-                        vfs->caller_available_allocation_units;
-        }
-        smb2_free_data(smb2, rep->output_buffer);
+        getinfo_data->cb(smb2, -nterror_to_errno(getinfo_data->status),
+                         getinfo_data->info, getinfo_data->cb_data);
+        getinfo_data->info = NULL;
+        free(getinfo_data);
 }
 
 static void
-getinfo_cb_1(struct smb2_context *smb2, int status,
-             void *command_data _U_, void *private_data)
+getinfo_query_cb(struct smb2_context *smb2, int status,
+                 void *command_data, void *private_data)
 {
-        struct stat_cb_data *stat_data = private_data;
+        getinfo_cb_data *getinfo_data = private_data;
+        struct smb2_query_info_reply *rep = command_data;
+        smb2_file_info *info = (smb2_file_info *)getinfo_data->info;
 
-        if (stat_data->status == SMB2_STATUS_SUCCESS) {
-                stat_data->status = status;
+        if (getinfo_data->status != SMB2_STATUS_SUCCESS) {
+                return;
         }
+        getinfo_data->status = status;
+
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "QueryFileInfo failed with (0x%08x) %s.",
+                               status, nterror_to_str(status));
+                getinfo_data->cb(smb2, -nterror_to_errno(status),
+                                 NULL, getinfo_data->cb_data);
+                return;
+        }
+
+        if (info->info_type == SMB2_0_INFO_FILE)
+        {
+                if (info->file_info_class == SMB2_FILE_BASIC_INFORMATION)
+                {
+                        struct smb2_file_basic_info *basic = rep->output_buffer;
+                        (info->u_info).basic_info = *basic;
+                }
+                else if (info->file_info_class == SMB2_FILE_STANDARD_INFORMATION)
+                {
+                        struct smb2_file_standard_info *standard = rep->output_buffer;
+                        (info->u_info).standard_info = *standard;
+                }
+                else if (info->file_info_class == SMB2_FILE_ALL_INFORMATION)
+                {
+                        struct smb2_file_all_info *all_info = rep->output_buffer;
+                        (info->u_info).all_info = *all_info;
+                }
+                else if (info->file_info_class == SMB2_FILE_RENAME_INFORMATION)
+                {
+                }
+                else if (info->file_info_class == SMB2_FILE_END_OF_FILE_INFORMATION)
+                {
+                }
+        }
+        else if (info->info_type == SMB2_0_INFO_FILESYSTEM)
+        {
+                if (info->file_info_class == SMB2_FILE_FS_SIZE_INFORMATION)
+                {
+                        struct smb2_file_fs_size_info *fsize = rep->output_buffer;
+                        (info->u_info).fs_size_info = *fsize;
+                }
+                else if (info->file_info_class == SMB2_FILE_FS_DEVICE_INFORMATION)
+                {
+                        struct smb2_file_fs_device_info *fs_device = rep->output_buffer;
+                        (info->u_info).fs_device_info = *fs_device;
+                }
+                else if (info->file_info_class == SMB2_FILE_FS_CONTROL_INFORMATION)
+                {
+                        struct smb2_file_fs_control_info *fs_control = rep->output_buffer;
+                        (info->u_info).fs_control_info = *fs_control;
+                }
+                else if (info->file_info_class == SMB2_FILE_FS_SECTOR_SIZE_INFORMATION)
+                {
+                        struct smb2_file_fs_sector_size_info *fs_sector = rep->output_buffer;
+                        (info->u_info).fs_sector_size_info = *fs_sector;
+                }
+                else if (info->file_info_class == SMB2_FILE_FS_FULL_SIZE_INFORMATION)
+                {
+                        struct smb2_file_fs_full_size_info *vfs = rep->output_buffer;
+                        (info->u_info).fs_full_size_info = *vfs;
+                }
+        }
+        else if (info->info_type == SMB2_0_INFO_SECURITY)
+        {
+                struct smb2_security_descriptor *sd = rep->output_buffer;
+                (info->u_info).security_info = sd;
+                rep->output_buffer = NULL; // DONOT free here, it will be used and freed by caller.
+        }
+        else if (info->info_type == SMB2_0_INFO_QUOTA)
+        {
+        }
+        else
+        {
+                smb2_set_error(smb2, "Invalid INFO TYPE");
+        }
+
+        getinfo_data->cb(smb2, 0, NULL, getinfo_data->cb_data);
+        if (rep->output_buffer != NULL) {
+                smb2_free_data(smb2, rep->output_buffer); rep->output_buffer = NULL;
+        }
+        return;
 }
 
-static int
-smb2_getinfo_async(struct smb2_context *smb2, const char *path,
-                   uint8_t info_type, uint8_t file_info_class,
-                   void *st,
+int
+smb2_getinfo_async(struct smb2_context *smb2,
+                   const char *path,
+                   smb2_file_info *info,
                    smb2_command_cb cb, void *cb_data)
 {
-        struct stat_cb_data *stat_data;
+        getinfo_cb_data *getinfo_data;
         struct smb2_create_request cr_req;
         struct smb2_query_info_request qi_req;
         struct smb2_close_request cl_req;
         struct smb2_pdu *pdu, *next_pdu;
 
-        stat_data = malloc(sizeof(struct stat_cb_data));
-        if (stat_data == NULL) {
-                smb2_set_error(smb2, "Failed to allocate create_data");
+        if (info == NULL) {
+                smb2_set_error(smb2, "No info type provided for query");
                 return -1;
         }
-        memset(stat_data, 0, sizeof(struct stat_cb_data));
 
-        stat_data->cb = cb;
-        stat_data->cb_data = cb_data;
-        stat_data->info_type = info_type;
-        stat_data->file_info_class = file_info_class;
-        stat_data->st = st;
+        getinfo_data = malloc(sizeof(getinfo_cb_data));
+        if (getinfo_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate getinfo_data");
+                return -1;
+        }
+        memset(getinfo_data, 0, sizeof(getinfo_cb_data));
+
+        getinfo_data->cb      = cb;
+        getinfo_data->cb_data = cb_data;
+        getinfo_data->info    = info;
 
         /* CREATE command */
         memset(&cr_req, 0, sizeof(struct smb2_create_request));
         cr_req.requested_oplock_level = SMB2_OPLOCK_LEVEL_NONE;
         cr_req.impersonation_level = SMB2_IMPERSONATION_IMPERSONATION;
         cr_req.desired_access = SMB2_FILE_READ_ATTRIBUTES | SMB2_FILE_READ_EA;
+        if (info->info_type == SMB2_0_INFO_SECURITY) {
+                cr_req.desired_access = SMB2_READ_CONTROL;
+        }
         cr_req.file_attributes = 0;
         cr_req.share_access = SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE;
         cr_req.create_disposition = SMB2_FILE_OPEN;
         cr_req.create_options = 0;
         cr_req.name = path;
 
-        pdu = smb2_cmd_create_async(smb2, &cr_req, getinfo_cb_1, stat_data);
+        pdu = smb2_cmd_create_async(smb2, &cr_req, getinfo_create_cb, getinfo_data);
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create create command");
-                free(stat_data);
+                free(getinfo_data);
                 return -1;
         }
 
         /* QUERY INFO command */
         memset(&qi_req, 0, sizeof(struct smb2_query_info_request));
-        qi_req.info_type = info_type;
-        qi_req.file_info_class = file_info_class;
+        qi_req.info_type = info->info_type;
+        qi_req.file_info_class = info->file_info_class;
         qi_req.output_buffer_length = 65535;
         qi_req.additional_information = 0;
+        if (info->info_type == SMB2_0_INFO_SECURITY) {
+                qi_req.additional_information =
+                               SMB2_OWNER_SECURITY_INFORMATION |
+                               SMB2_GROUP_SECURITY_INFORMATION |
+                               SMB2_DACL_SECURITY_INFORMATION;
+        }
         qi_req.flags = 0;
         qi_req.file_id.persistent_id = compound_file_id.persistent_id;
         qi_req.file_id.volatile_id= compound_file_id.volatile_id;
 
         next_pdu = smb2_cmd_query_info_async(smb2, &qi_req,
-                                             getinfo_cb_2, stat_data);
+                                             getinfo_query_cb, getinfo_data);
         if (next_pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create query command");
-                free(stat_data);
+                free(getinfo_data);
                 smb2_free_pdu(smb2, pdu);
                 return -1;
         }
@@ -1786,10 +1859,10 @@ smb2_getinfo_async(struct smb2_context *smb2, const char *path,
         cl_req.file_id.persistent_id = compound_file_id.persistent_id;
         cl_req.file_id.volatile_id= compound_file_id.volatile_id;
 
-        next_pdu = smb2_cmd_close_async(smb2, &cl_req, getinfo_cb_3, stat_data);
+        next_pdu = smb2_cmd_close_async(smb2, &cl_req, getinfo_close_cb, getinfo_data);
         if (next_pdu == NULL) {
-                stat_data->cb(smb2, -ENOMEM, NULL, stat_data->cb_data);
-                free(stat_data);
+                getinfo_data->cb(smb2, -ENOMEM, NULL, getinfo_data->cb_data);
+                free(getinfo_data);
                 smb2_free_pdu(smb2, pdu);
                 return -1;
         }
@@ -1798,28 +1871,6 @@ smb2_getinfo_async(struct smb2_context *smb2, const char *path,
         smb2_queue_pdu(smb2, pdu);
 
         return 0;
-}
-
-int
-smb2_stat_async(struct smb2_context *smb2, const char *path,
-                struct smb2_stat_64 *st,
-                smb2_command_cb cb, void *cb_data)
-{
-        return smb2_getinfo_async(smb2, path,
-                                  SMB2_0_INFO_FILE,
-                                  SMB2_FILE_ALL_INFORMATION,
-                                  st, cb, cb_data);
-}
-
-int
-smb2_statvfs_async(struct smb2_context *smb2, const char *path,
-                   struct smb2_statvfs *statvfs,
-                   smb2_command_cb cb, void *cb_data)
-{
-        return smb2_getinfo_async(smb2, path,
-                                  SMB2_0_INFO_FILESYSTEM,
-                                  SMB2_FILE_FS_FULL_SIZE_INFORMATION,
-                                  statvfs, cb, cb_data);
 }
 
 struct trunc_cb_data {
