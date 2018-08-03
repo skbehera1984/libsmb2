@@ -714,7 +714,7 @@ smb2_get_security(struct smb2_context *smb2,
 {
         int sts = 0;
         struct sync_cb_data cb_data;
-        struct smb2_security_descriptor *sd = NULL;
+        smb2_file_info info;
 
         uint8_t *relative_sec = NULL;
         uint32_t relative_sec_size = 1024;
@@ -727,12 +727,12 @@ smb2_get_security(struct smb2_context *smb2,
 
         cb_data.is_finished = 0;
 
-        if (smb2_get_security_async(smb2, path, &sd,
-                                    generic_status_cb, &cb_data) != 0)
-        {
-                smb2_set_error(smb2, "smb2_get_security_async failedi : %s",
-                               smb2_get_error(smb2));
-                return -ENOMEM;
+        info.info_type = SMB2_0_INFO_SECURITY;
+        info.u_info.security_info = NULL;
+
+        if (smb2_getinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
+                return -1;
         }
 
         if (wait_for_reply(smb2, &cb_data) < 0)
@@ -741,7 +741,7 @@ smb2_get_security(struct smb2_context *smb2,
         }
 
 #ifdef DEBUG
-        print_security_descriptor(sd);
+        print_security_descriptor(info.u_info.security_info);
 #endif
 
         relative_sec = (uint8_t *) calloc(1, relative_sec_size);
@@ -750,7 +750,7 @@ smb2_get_security(struct smb2_context *smb2,
                 return -ENOMEM;
         }
 retry:
-        if ((sts = smb2_encode_security_descriptor(smb2, sd,
+        if ((sts = smb2_encode_security_descriptor(smb2, info.u_info.security_info,
                                                    relative_sec,
                                                    &relative_sec_size)) < 0) {
                 if (sts == -9) {
@@ -769,7 +769,8 @@ retry:
                 return -ENOMEM;
         }
 
-        smb2_free_data(smb2, sd); sd = NULL;
+        smb2_free_data(smb2, info.u_info.security_info);
+        info.u_info.security_info= NULL;
 
         *buf = relative_sec;
         *buf_len = relative_sec_size;
