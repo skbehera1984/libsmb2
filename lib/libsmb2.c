@@ -1545,24 +1545,21 @@ smb2_lseek(struct smb2_context *smb2, struct smb2fh *fh,
         }
 }
 
-struct stat_cb_data {
-        smb2_command_cb cb;
-        void *cb_data;
-
-        uint32_t status;
-        uint8_t info_type;
-        uint8_t file_info_class;
-        void *st;
-};
+typedef struct _getinfo_cb_data {
+        smb2_command_cb     cb;
+        void                *cb_data;
+        uint32_t            status;
+        void                *info; // not allocated so don't free
+} getinfo_cb_data;
 
 static void
 fstat_cb_1(struct smb2_context *smb2, int status,
            void *command_data, void *private_data)
 {
-        struct stat_cb_data *stat_data = private_data;
+        getinfo_cb_data *stat_data = private_data;
         struct smb2_query_info_reply *rep = command_data;
         struct smb2_file_all_info *fs = rep->output_buffer;
-        struct smb2_stat_64 *st = stat_data->st;
+        struct smb2_stat_64 *st = stat_data->info;
 
         if (status != SMB2_STATUS_SUCCESS) {
                 stat_data->cb(smb2, -nterror_to_errno(status),
@@ -1602,20 +1599,20 @@ smb2_fstat_async(struct smb2_context *smb2, struct smb2fh *fh,
                  struct smb2_stat_64 *st,
                  smb2_command_cb cb, void *cb_data)
 {
-        struct stat_cb_data *stat_data;
+        getinfo_cb_data *stat_data;
         struct smb2_query_info_request req;
         struct smb2_pdu *pdu;
 
-        stat_data = malloc(sizeof(struct stat_cb_data));
+        stat_data = malloc(sizeof(getinfo_cb_data));
         if (stat_data == NULL) {
                 smb2_set_error(smb2, "Failed to allocate stat_data");
                 return -ENOMEM;
         }
-        memset(stat_data, 0, sizeof(struct stat_cb_data));
+        memset(stat_data, 0, sizeof(getinfo_cb_data));
 
         stat_data->cb = cb;
         stat_data->cb_data = cb_data;
-        stat_data->st = st;
+        stat_data->info = st;
 
         memset(&req, 0, sizeof(struct smb2_query_info_request));
         req.info_type = SMB2_0_INFO_FILE;
@@ -1636,13 +1633,6 @@ smb2_fstat_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         return 0;
 }
-
-typedef struct _getinfo_cb_data {
-        smb2_command_cb cb;
-        void            *cb_data;
-        uint32_t        status;
-        void            *info; // not allocated so don't free
-} getinfo_cb_data;
 
 static void
 getinfo_create_cb(struct smb2_context *smb2, int status,
