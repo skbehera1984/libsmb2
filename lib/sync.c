@@ -562,20 +562,44 @@ int smb2_query_file_all_info(struct smb2_context *smb2,
                              struct smb2_file_info_all *all_info)
 {
         struct sync_cb_data cb_data;
-
         cb_data.is_finished = 0;
+        smb2_file_info info;
 
-        if (smb2_query_file_all_info_async(smb2, path,
-                                           all_info,
-                                           generic_status_cb,
-                                           &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_getallinfo_async failed");
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_ALL_INFORMATION;
+
+        if (smb2_getinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s", smb2_get_error(smb2));
                 return -1;
         }
 
         if (wait_for_reply(smb2, &cb_data) < 0) {
                 return -1;
         }
+
+        all_info->smb2_type = SMB2_TYPE_FILE;
+        if (info.u_info.all_info.basic.file_attributes & SMB2_FILE_ATTRIBUTE_DIRECTORY) {
+                all_info->smb2_type = SMB2_TYPE_DIRECTORY;
+        }
+        all_info->smb2_ino           = info.u_info.all_info.index_number;
+        all_info->ea_size            = info.u_info.all_info.ea_size;
+
+        all_info->smb2_atime         = info.u_info.all_info.basic.last_access_time.tv_sec; 
+        all_info->smb2_atime_nsec    = info.u_info.all_info.basic.last_access_time.tv_usec * 1000;
+        all_info->smb2_mtime         = info.u_info.all_info.basic.last_write_time.tv_sec;
+        all_info->smb2_mtime_nsec    = info.u_info.all_info.basic.last_write_time.tv_usec * 1000;
+        all_info->smb2_ctime         = info.u_info.all_info.basic.change_time.tv_sec;
+        all_info->smb2_ctime_nsec    = info.u_info.all_info.basic.change_time.tv_usec * 1000;
+        all_info->smb2_crtime        = info.u_info.all_info.basic.creation_time.tv_sec;
+        all_info->smb2_crtime_nsec   = info.u_info.all_info.basic.creation_time.tv_usec * 1000;
+        all_info->file_attributes    = info.u_info.all_info.basic.file_attributes;
+
+        all_info->smb2_size          = info.u_info.all_info.standard.end_of_file;
+        all_info->smb2_nlink         = info.u_info.all_info.standard.number_of_links;
+        all_info->allocation_size    = info.u_info.all_info.standard.allocation_size;
+        all_info-> end_of_file       = info.u_info.all_info.standard.end_of_file;
+        all_info-> delete_pending    = info.u_info.all_info.standard.delete_pending;
+        all_info-> directory         = info.u_info.all_info.standard.directory;
 
         return cb_data.status;
 }
