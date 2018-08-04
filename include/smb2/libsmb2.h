@@ -100,6 +100,10 @@ typedef union _file_info_union {
         struct smb2_file_fs_control_info      fs_control_info;
         struct smb2_file_fs_full_size_info    fs_full_size_info;
         struct smb2_file_fs_sector_size_info  fs_sector_size_info;
+        /* specific to SMB2_SET_INFO only */
+        struct smb2_file_end_of_file_info     eof_info;
+        struct smb2_file_rename_info          rename_info;
+        struct smb2_file_security_info        sec_info;
 } smb2_file_info_U;
 
 typedef struct _file_info {
@@ -817,18 +821,6 @@ int smb2_stat(struct smb2_context *smb2, const char *path,
 int smb2_statvfs(struct smb2_context *smb2, const char *path,
                  struct smb2_statvfs *statvfs);
 
-/*
- * Async query_file_all_info()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success. Command_data is struct smb2_stat_64
- * -errno : An error occured.
- */
 int
 smb2_query_file_all_info_async(struct smb2_context *smb2, const char *path,
                                 struct smb2_file_info_all *all_info,
@@ -931,24 +923,6 @@ int smb2_echo_async(struct smb2_context *smb2,
  * -errno : Failure.
  */
 int smb2_echo(struct smb2_context *smb2);
-
-/*
- * Async get_security()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success.
- * -errno : An error occured.
- */
-int smb2_get_security_async(struct smb2_context *smb2,
-                            const char *path,
-                            struct smb2_security_descriptor **sd,
-                            smb2_command_cb cb,
-                            void *cb_data);
 
 /*
  * Sync get_security()
@@ -1074,23 +1048,6 @@ int smb2_list_shares(struct smb2_context *smb2,
                      uint32_t   shinfo_type,
                      struct smb2_shareinfo **shares,
                      int *numshares);
-/* Async set_file_basic_info()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success.
- * -errno : An error occured.
- *          Command_data is NULL.
- */
-int
-smb2_set_file_basic_info_async(struct smb2_context *smb2,
-                               const char *path,
-                               struct smb2_file_basic_info *info,
-                               smb2_command_cb cb, void *cb_data);
 
 /* Sync set_file_basic_info()
  * Function returns
@@ -1101,6 +1058,12 @@ int
 smb2_set_file_basic_info(struct smb2_context *smb2,
                          const char *path,
                          struct smb2_file_basic_info *info);
+
+int
+smb2_setinfo_async(struct smb2_context *smb2,
+                   const char *path,
+                   smb2_file_info *info,
+                   smb2_command_cb cb, void *cb_data);
 
 #ifdef __cplusplus
 }

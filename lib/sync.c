@@ -604,45 +604,85 @@ int smb2_query_file_all_info(struct smb2_context *smb2,
         return cb_data.status;
 }
 
+int
+smb2_set_file_basic_info(struct smb2_context *smb2,
+                         const char *path,
+                         struct smb2_file_basic_info *basic_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        if (basic_info == NULL) {
+                smb2_set_error(smb2, "%s : no info to set");
+                return -1;
+        }
+
+        memset(&info, 0, sizeof(smb2_file_info));
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+        info.u_info.basic_info = *basic_info;
+
+        if (smb2_setinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
+}
+
 int smb2_rename(struct smb2_context *smb2, const char *oldpath,
                 const char *newpath)
 {
         struct sync_cb_data cb_data;
+        smb2_file_info info;
+        cb_data.is_finished = 0;
 
-	cb_data.is_finished = 0;
+        memset(&info, 0, sizeof(smb2_file_info));
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_RENAME_INFORMATION;
+        info.u_info.rename_info.replace_if_exist = 0;
+        info.u_info.rename_info.file_name = discard_const(newpath);
 
-	if (smb2_rename_async(smb2, oldpath, newpath,
-                            generic_status_cb, &cb_data) != 0) {
-		smb2_set_error(smb2, "smb2_rename_async failed");
-		return -1;
-	}
-
-	if (wait_for_reply(smb2, &cb_data) < 0) {
+        if (smb2_setinfo_async(smb2, oldpath, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_rename  failed");
                 return -1;
         }
 
-	return cb_data.status;
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
 }
 
 int smb2_truncate(struct smb2_context *smb2, const char *path,
                   uint64_t length)
 {
         struct sync_cb_data cb_data;
+        smb2_file_info info;
+        cb_data.is_finished = 0;
 
-	cb_data.is_finished = 0;
+        memset(&info, 0, sizeof(smb2_file_info));
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_END_OF_FILE_INFORMATION;
+        info.u_info.eof_info.end_of_file = length;
 
-	if (smb2_truncate_async(smb2, path, length,
-                                generic_status_cb, &cb_data) != 0) {
-		smb2_set_error(smb2, "smb2_truncate_async failed. %s",
+        if (smb2_setinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_truncate failed. %s",
                                smb2_get_error(smb2));
-		return -1;
-	}
-
-	if (wait_for_reply(smb2, &cb_data) < 0) {
                 return -1;
         }
 
-	return cb_data.status;
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        return cb_data.status;
 }
 
 int smb2_ftruncate(struct smb2_context *smb2, struct smb2fh *fh,
@@ -785,6 +825,7 @@ smb2_set_security(struct smb2_context *smb2,
                   uint32_t buf_len)
 {
         struct sync_cb_data cb_data;
+        smb2_file_info info;
 
         if (smb2->is_connected == 0)
         {
@@ -812,8 +853,13 @@ smb2_set_security(struct smb2_context *smb2,
         smb2_free_data(smb2, secdesc); secdesc = NULL;
 #endif
 
-        if (smb2_set_security_async(smb2, path, buf, buf_len,
-                                    generic_status_cb, &cb_data) != 0)
+        memset(&info, 0, sizeof(smb2_file_info));
+        info.info_type = SMB2_0_INFO_SECURITY;
+        info.file_info_class = 0;
+        info.u_info.sec_info.secbuf = buf;
+        info.u_info.sec_info.secbuf_len = buf_len;
+
+        if (smb2_setinfo_async(smb2, path, &info, generic_status_cb, &cb_data) != 0)
         {
                 smb2_set_error(smb2, "smb2_set_security_async failed : %s",
                                smb2_get_error(smb2));
@@ -1118,44 +1164,4 @@ int smb2_list_shares(struct smb2_context *smb2,
         smb2_close(smb2, fh);
         smb2_disconnect_share(smb2);
         return status;
-}
-
-int
-smb2_set_file_basic_info(struct smb2_context *smb2,
-                         const char *path,
-                         struct smb2_file_basic_info *info)
-{
-        struct sync_cb_data cb_data;
-        cb_data.is_finished = 0;
-
-        if (info == NULL) {
-                smb2_set_error(smb2, "%s : no info to set");
-                return -1;
-        }
-#if 0
-        struct smb2_stat_64 *st
-		info.creation_time.tv_sec =  st->smb2_crtime;
-		info.creation_time.tv_usec = st->smb2_crtime_nsec/1000;
-		info.last_access_time.tv_sec =  st->smb2_atime;
-		info.last_access_time.tv_usec = st->smb2_atime_nsec/1000;
-		info.last_write_time.tv_sec =  st->smb2_mtime;
-		info.last_write_time.tv_usec = st->smb2_mtime_nsec/1000;
-		info.change_time.tv_sec =  st->smb2_ctime;
-		info.change_time.tv_usec = st->smb2_ctime_nsec/1000;
-
-        if (st->smb2_type == SMB2_TYPE_DIRECTORY) {
-                info.file_attributes &= SMB2_FILE_ATTRIBUTE_DIRECTORY;
-        }
-#endif
-        if (smb2_set_file_basic_info_async(smb2, path, info,
-                                           generic_status_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "%s failed : %s", __func__, smb2_get_error(smb2));
-                return -1;
-        }
-
-        if (wait_for_reply(smb2, &cb_data) < 0) {
-                return -1;
-        }
-
-        return cb_data.status;
 }
