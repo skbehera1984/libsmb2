@@ -1,6 +1,6 @@
 noinst_PROGRAMS = smb2-cat-async smb2-cat-sync \
 	smb2-ftruncate-sync \
-	smb2-ls-async smb2-ls-sync \
+	smb2-ls-sync \
 	smb2-put-sync \
 	smb2-raw-fsstat-async \
 	smb2-raw-getsd-async \

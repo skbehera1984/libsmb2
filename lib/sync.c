@@ -142,20 +142,38 @@ int smb2_disconnect_share(struct smb2_context *smb2)
 /*
  * opendir()
  */
-struct smb2dir *smb2_opendir(struct smb2_context *smb2, const char *path)
+smb2dir *smb2_querydir(struct smb2_context *smb2, const char *path)
 {
         struct sync_cb_data cb_data;
+        struct smb2fh *fh = NULL;
 
         cb_data.is_finished = 0;
 
-        if (smb2_opendir_async(smb2, path, sync_cb, &cb_data) != 0) {
-                smb2_set_error(smb2, "smb2_opendir_async failed");
+        if (path == NULL) {
+                path = "";
+        }
+
+        fh = smb2_open_file(smb2, path, 0, 0,
+                            SMB2_FILE_LIST_DIRECTORY | SMB2_FILE_READ_ATTRIBUTES,
+                            SMB2_FILE_ATTRIBUTE_DIRECTORY,
+                            SMB2_FILE_SHARE_READ | SMB2_FILE_SHARE_WRITE,
+                            SMB2_FILE_OPEN,
+                            SMB2_FILE_DIRECTORY_FILE);
+        if (fh == NULL) {
+                smb2_set_error(smb2, "smb2_opendir failed - %s", smb2_get_error(smb2));
+                return NULL;
+        }
+
+        if (smb2_querydir_async(smb2, fh, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_querydir_async failed");
                 return NULL;
         }
 
         if (wait_for_reply(smb2, &cb_data) < 0) {
                 return NULL;
         }
+
+        smb2_close(smb2, fh);
 
         return cb_data.ptr;
 }

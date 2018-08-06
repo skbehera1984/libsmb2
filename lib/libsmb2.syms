@@ -42,8 +42,8 @@ smb2_open
 smb2_open_async
 smb2_open_file
 smb2_open_file_async
-smb2_opendir
-smb2_opendir_async
+smb2_querydir
+smb2_querydir_async
 smb2_parse_url
 smb2_pread
 smb2_pread_async

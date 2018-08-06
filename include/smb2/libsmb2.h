@@ -340,9 +340,21 @@ void smb2_free_pdu(struct smb2_context *smb2, struct smb2_pdu *pdu);
 void smb2_queue_pdu(struct smb2_context *smb2, struct smb2_pdu *pdu);
 
 /*
+ * OPEN
+ */
+struct smb2fh {
+        smb2_command_cb cb;
+        void *cb_data;
+
+        smb2_file_id file_id;
+        int64_t offset;
+};
+
+/*
  * OPENDIR
  */
-struct smb2dir;
+typedef struct _smb2dir smb2dir;
+
 /*
  * Async opendir()
  *
@@ -357,16 +369,16 @@ struct smb2dir;
  *          This structure is freed using smb2_closedir().
  * -errno : An error occured.
  *          Command_data is NULL.
- */       
-int smb2_opendir_async(struct smb2_context *smb2, const char *path,
-                       smb2_command_cb cb, void *cb_data);
+ */
+int smb2_querydir_async(struct smb2_context *smb2, struct smb2fh *fh,
+                        smb2_command_cb cb, void *cb_data);
 
 /*
  * Sync opendir()
  *
  * Returns NULL on failure.
  */
-struct smb2dir *smb2_opendir(struct smb2_context *smb2, const char *path);
+smb2dir *smb2_querydir(struct smb2_context *smb2, const char *path);
 
 /*
  * closedir()
@@ -374,7 +386,7 @@ struct smb2dir *smb2_opendir(struct smb2_context *smb2, const char *path);
 /*
  * smb2_closedir() never blocks, thus no async version is needed.
  */
-void smb2_closedir(struct smb2_context *smb2, struct smb2dir *smb2dir);
+void smb2_closedir(struct smb2_context *smb2, smb2dir *smb2dir);
 
 /*
  * readdir()
@@ -382,8 +394,7 @@ void smb2_closedir(struct smb2_context *smb2, struct smb2dir *smb2dir);
 /*
  * smb2_readdir() never blocks, thus no async version is needed.
  */
-struct smb2dirent *smb2_readdir(struct smb2_context *smb2,
-                                struct smb2dir *smb2dir);
+struct smb2dirent *smb2_readdir(struct smb2_context *smb2, smb2dir *smb2dir);
 
 /*
  * rewinddir()
@@ -391,7 +402,7 @@ struct smb2dirent *smb2_readdir(struct smb2_context *smb2,
 /*
  * smb2_rewinddir() never blocks, thus no async version is needed.
  */
-void smb2_rewinddir(struct smb2_context *smb2, struct smb2dir *smb2dir);
+void smb2_rewinddir(struct smb2_context *smb2, smb2dir *smb2dir);
 
 /*
  * telldir()
@@ -399,7 +410,7 @@ void smb2_rewinddir(struct smb2_context *smb2, struct smb2dir *smb2dir);
 /*
  * smb2_telldir() never blocks, thus no async version is needed.
  */
-long smb2_telldir(struct smb2_context *smb2, struct smb2dir *smb2dir);
+long smb2_telldir(struct smb2_context *smb2, smb2dir *smb2dir);
 
 /*
  * seekdir()
@@ -407,19 +418,7 @@ long smb2_telldir(struct smb2_context *smb2, struct smb2dir *smb2dir);
 /*
  * smb2_seekdir() never blocks, thus no async version is needed.
  */
-void smb2_seekdir(struct smb2_context *smb2, struct smb2dir *smb2dir,
-                  long loc);
-
-/*
- * OPEN
- */
-struct smb2fh {
-        smb2_command_cb cb;
-        void *cb_data;
-
-        smb2_file_id file_id;
-        int64_t offset;
-};
+void smb2_seekdir(struct smb2_context *smb2, smb2dir *smb2dir, long loc);
 
 /*
  * Async open()
