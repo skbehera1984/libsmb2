@@ -112,6 +112,7 @@ struct smb2_context {
         int is_connected;
 
         enum smb2_sec sec;
+        void *auth_data;
 
         uint16_t security_mode;
         int use_cached_creds;
@@ -121,6 +122,9 @@ struct smb2_context {
         const char *server;
         const char *share;
         const char *user;
+        /* UNC for the share in utf8 as well as ucs2 formats */
+        char *utf8_unc;
+        struct ucs2 *ucs2_unc;
 
         /* Only used with --without-libkrb5 */
         const char *password;
@@ -147,8 +151,8 @@ struct smb2_context {
         /*
          * For sending PDUs
          */
-	struct smb2_pdu *outqueue;
-	struct smb2_pdu *waitqueue;
+        struct smb2_pdu *outqueue;
+        struct smb2_pdu *waitqueue;
 
 
         /*

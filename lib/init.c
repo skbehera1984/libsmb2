@@ -261,6 +261,12 @@ void smb2_destroy_context(struct smb2_context *smb2)
         free(discard_const(smb2->user));
         free(discard_const(smb2->server));
         free(discard_const(smb2->share));
+        if (smb2->utf8_unc) {
+                free(smb2->utf8_unc);
+        }
+        if (smb2->ucs2_unc) {
+                free(smb2->ucs2_unc);
+        }
 
         if (smb2->domain) {
             free(discard_const(smb2->domain));
