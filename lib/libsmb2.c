@@ -184,13 +184,8 @@ typedef struct _ioctl_data {
         uint32_t *output_count;
 } ioctl_data;
 
-typedef struct _rw_data {
-        struct smb2fh *fh;
-} rw_data;
-
 typedef struct _create_cb_data {
         uint8_t needToClose:1;
-        struct smb2fh *fh;
 } create_cb_data;
 
 struct smb2_dirent_internal {
@@ -208,12 +203,11 @@ typedef struct _smb2dir {
 typedef struct _async_cb_data {
         smb2_command_cb cb;
         void            *cb_data;
-        uint16_t        cmd;
         uint32_t        status;
         union {
+                struct smb2fh    *fh;
                 query_set_data   qs_info;
                 ioctl_data       ioctl;
-                rw_data          rwData;
                 create_cb_data   cr_data;
                 smb2dir          *dir_data;
         } acb_data_U;
@@ -886,17 +880,21 @@ static void
 close_cb(struct smb2_context *smb2, int status,
          void *command_data, void *private_data)
 {
-        struct smb2fh *fh = private_data;
+        async_cb_data *close_data = private_data;
+        struct smb2fh *fh = close_data->acb_data_U.fh;
 
         if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_FILE_CLOSED) {
                 smb2_set_error(smb2, "Close failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                fh->cb(smb2, -nterror_to_errno(status), NULL, fh->cb_data);
+                close_data->cb(smb2, -nterror_to_errno(status), NULL, close_data->cb_data);
+                free_smb2fh(fh);
+                free(close_data);
                 return;
         }
 
-        fh->cb(smb2, 0, NULL, fh->cb_data);
+        close_data->cb(smb2, 0, NULL, close_data->cb_data);
         free_smb2fh(fh);
+        free(close_data);
 }
 
 int
@@ -905,16 +903,25 @@ smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
 {
         struct smb2_close_request req;
         struct smb2_pdu *pdu;
+        async_cb_data *close_data = NULL;
 
-        fh->cb = cb;
-        fh->cb_data = cb_data;
+        close_data = malloc(sizeof(async_cb_data));
+        if (close_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate close_data");
+                return -ENOMEM;
+        }
+        memset(close_data, 0, sizeof(async_cb_data));
+
+        close_data->cb = cb;
+        close_data->cb_data = cb_data;
+        close_data->acb_data_U.fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_close_request));
         req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
         req.file_id.persistent_id = fh->file_id.persistent_id;
         req.file_id.volatile_id = fh->file_id.volatile_id;
 
-        pdu = smb2_cmd_close_async(smb2, &req, close_cb, fh);
+        pdu = smb2_cmd_close_async(smb2, &req, close_cb, close_data);
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create close command");
                 return -ENOMEM;
@@ -929,7 +936,7 @@ open_cb(struct smb2_context *smb2, int status,
         void *command_data, void *private_data)
 {
         async_cb_data *create_data = private_data;
-        struct smb2fh *fh = create_data->acb_data_U.cr_data.fh;
+        struct smb2fh *fh = create_data->acb_data_U.fh;
         struct smb2_create_reply *rep = command_data;
 
         if (status != SMB2_STATUS_SUCCESS) {
@@ -945,7 +952,7 @@ open_cb(struct smb2_context *smb2, int status,
                 if (smb2_close_async(smb2, fh, create_data->cb, create_data->cb_data) != 0) {
                         smb2_set_error(smb2, "SMB2_CLOSE failed - %s", smb2_get_error(smb2));
                 }
-                create_data->acb_data_U.cr_data.fh = NULL;
+                create_data->acb_data_U.fh = NULL;
                 free(create_data);
                 return;
         } else {
@@ -953,7 +960,7 @@ open_cb(struct smb2_context *smb2, int status,
                 fh->file_id.volatile_id = rep->file_id.volatile_id;
                 create_data->cb(smb2, 0, fh, create_data->cb_data);
 
-                create_data->acb_data_U.cr_data.fh = NULL;
+                create_data->acb_data_U.fh = NULL;
                 free(create_data);
         }
 
@@ -984,12 +991,12 @@ smb2_open_file_async(struct smb2_context *smb2,
         }
         memset(create_data, 0, sizeof(async_cb_data));
 
-        create_data->acb_data_U.cr_data.fh = malloc(sizeof(struct smb2fh));
-        if (create_data->acb_data_U.cr_data.fh == NULL) {
+        create_data->acb_data_U.fh = malloc(sizeof(struct smb2fh));
+        if (create_data->acb_data_U.fh == NULL) {
                 smb2_set_error(smb2, "Failed to allocate smbfh");
                 return -ENOMEM;
         }
-        memset(create_data->acb_data_U.cr_data.fh, 0, sizeof(struct smb2fh));
+        memset(create_data->acb_data_U.fh, 0, sizeof(struct smb2fh));
 
         create_data->cb = cb;
         create_data->cb_data = cb_data;
@@ -1214,16 +1221,18 @@ static void
 fsync_cb(struct smb2_context *smb2, int status,
          void *command_data, void *private_data)
 {
-        struct smb2fh *fh = private_data;
+        async_cb_data *fsync_data = private_data;
 
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "Flush failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                fh->cb(smb2, -nterror_to_errno(status), NULL, fh->cb_data);
+                fsync_data->cb(smb2, -nterror_to_errno(status), NULL, fsync_data->cb_data);
+                free(fsync_data);
                 return;
         }
 
-        fh->cb(smb2, 0, NULL, fh->cb_data);
+        fsync_data->cb(smb2, 0, NULL, fsync_data->cb_data);
+        free(fsync_data);
 }
 
 int
@@ -1232,15 +1241,24 @@ smb2_fsync_async(struct smb2_context *smb2, struct smb2fh *fh,
 {
         struct smb2_flush_request req;
         struct smb2_pdu *pdu;
+        async_cb_data *fsync_data = NULL;
 
-        fh->cb = cb;
-        fh->cb_data = cb_data;
+        fsync_data = malloc(sizeof(async_cb_data));
+        if (fsync_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate fsync_data");
+                return -ENOMEM;
+        }
+        memset(fsync_data, 0, sizeof(async_cb_data));
+
+        fsync_data->cb = cb;
+        fsync_data->cb_data = cb_data;
+        fsync_data->acb_data_U.fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_flush_request));
         req.file_id.persistent_id = fh->file_id.persistent_id;
         req.file_id.volatile_id = fh->file_id.volatile_id;
 
-        pdu = smb2_cmd_flush_async(smb2, &req, fsync_cb, fh);
+        pdu = smb2_cmd_flush_async(smb2, &req, fsync_cb, fsync_data);
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create flush command");
                 return -ENOMEM;
@@ -1255,7 +1273,7 @@ read_cb(struct smb2_context *smb2, int status,
       void *command_data, void *private_data)
 {
         async_cb_data *read_data = private_data;
-        struct smb2fh *fh = read_data->acb_data_U.rwData.fh;
+        struct smb2fh *fh = read_data->acb_data_U.fh;
         struct smb2_read_reply *rep = command_data;
 
         if (status && status != SMB2_STATUS_END_OF_FILE) {
@@ -1312,7 +1330,7 @@ smb2_pread_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         read_data->cb = cb;
         read_data->cb_data = cb_data;
-        read_data->acb_data_U.rwData.fh = fh;
+        read_data->acb_data_U.fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_read_request));
         req.flags = 0;
@@ -1350,7 +1368,7 @@ write_cb(struct smb2_context *smb2, int status,
       void *command_data, void *private_data)
 {
         async_cb_data *write_data = private_data;
-        struct smb2fh *fh = write_data->acb_data_U.rwData.fh;
+        struct smb2fh *fh = write_data->acb_data_U.fh;
         struct smb2_write_reply *rep = command_data;
 
         if (status && status != SMB2_STATUS_END_OF_FILE) {
@@ -1407,7 +1425,7 @@ smb2_pwrite_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         write_data->cb = cb;
         write_data->cb_data = cb_data;
-        write_data->acb_data_U.rwData.fh = fh;
+        write_data->acb_data_U.fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_write_request));
         req.length = count;
