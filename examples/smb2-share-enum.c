@@ -36,7 +36,7 @@ int usage(void)
         exit(1);
 }
 
-void se_cb(struct smb2_context *smb2, int status,
+void se_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data, void *private_data)
 {
         struct srvsvc_netshareenumall_rep *rep = command_data;

@@ -40,19 +40,19 @@ int usage(void)
         exit(1);
 }
 
-void dc_cb(struct smb2_context *smb2, int status,
+void dc_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data _U_, void *private_data)
 {
         is_finished = 1;
 }
 
-void cl_cb(struct smb2_context *smb2, int status,
+void cl_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data, void *private_data)
 {
         smb2_disconnect_share_async(smb2, dc_cb, NULL);
 }
 
-void pr_cb(struct smb2_context *smb2, int status,
+void pr_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data, void *private_data)
 {
         struct smb2fh *fh = private_data;
@@ -80,7 +80,7 @@ void pr_cb(struct smb2_context *smb2, int status,
         }
 }
 
-void of_cb(struct smb2_context *smb2, int status,
+void of_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data, void *private_data)
 {
         struct smb2fh *fh = command_data;
@@ -97,7 +97,7 @@ void of_cb(struct smb2_context *smb2, int status,
         }
 }
 
-void cf_cb(struct smb2_context *smb2, int status,
+void cf_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data, void *private_data)
 {
         if (status) {

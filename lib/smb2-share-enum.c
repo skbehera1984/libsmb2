@@ -1232,7 +1232,7 @@ encode_request(struct dcerpc_context *ctx, uint8_t *buf, int max,
 }
 
 static void
-nse_enum_read_cb(struct smb2_context *smb2, int status,
+nse_enum_read_cb(struct smb2_context *smb2, uint32_t status,
                  void *command_data, void *private_data)
 {
         struct smb2nse *nse = private_data;
@@ -1286,7 +1286,7 @@ nse_enum_read_cb(struct smb2_context *smb2, int status,
 }
 
 static void
-nse_enum_write_cb(struct smb2_context *smb2, int status,
+nse_enum_write_cb(struct smb2_context *smb2, uint32_t status,
                   void *command_data, void *private_data)
 {
         struct smb2nse *nse = private_data;
@@ -1324,7 +1324,7 @@ nse_enum_write_cb(struct smb2_context *smb2, int status,
 
 #define MAX_SERVER_NAME 64
 static void
-nse_bind_read_cb(struct smb2_context *smb2, int status,
+nse_bind_read_cb(struct smb2_context *smb2, uint32_t status,
                  void *command_data, void *private_data)
 {
         struct smb2nse *nse = private_data;
@@ -1449,7 +1449,7 @@ nse_bind_read_cb(struct smb2_context *smb2, int status,
 }
 
 static void
-nse_bind_write_cb(struct smb2_context *smb2, int status,
+nse_bind_write_cb(struct smb2_context *smb2, uint32_t status,
                   void *command_data, void *private_data)
 {
         struct smb2nse *nse = private_data;
@@ -1486,7 +1486,7 @@ nse_bind_write_cb(struct smb2_context *smb2, int status,
 }
 
 static void
-nse_open_cb(struct smb2_context *smb2, int status,
+nse_open_cb(struct smb2_context *smb2, uint32_t status,
             void *command_data, void *private_data)
 {
         struct smb2nse *nse = private_data;

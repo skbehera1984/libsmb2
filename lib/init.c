@@ -223,6 +223,8 @@ struct smb2_context *smb2_init_context(void)
         smb2->signing_required = 0;
         memset(smb2->signing_key, 0, SMB2_KEY_SIZE);
 
+        smb2->ntstatus = SMB2_STATUS_SUCCESS;
+
         return smb2;
 }
 
@@ -274,6 +276,8 @@ void smb2_destroy_context(struct smb2_context *smb2)
         if (smb2->workstation) {
             free(discard_const(smb2->workstation));
         }
+
+        smb2->ntstatus = SMB2_STATUS_SUCCESS;
 
         free(smb2);
 }
@@ -445,4 +449,14 @@ void smb2_set_workstation(struct smb2_context *smb2, const char *workstation)
 void smb2_set_auth_mode(struct smb2_context *smb2, enum smb2_sec mode)
 {
         smb2->sec = mode;
+}
+
+uint32_t smb2_get_ntstatus(struct smb2_context *smb2)
+{
+        return smb2->ntstatus;
+}
+
+void smb2_set_ntstatus(struct smb2_context *smb2, uint32_t sts)
+{
+        smb2->ntstatus = sts;
 }

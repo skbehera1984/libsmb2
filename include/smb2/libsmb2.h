@@ -29,7 +29,7 @@ struct smb2_context;
  * Generic callback for completion of smb2_*_async().
  * command_data depends on status.
  */
-typedef void (*smb2_command_cb)(struct smb2_context *smb2, int status,
+typedef void (*smb2_command_cb)(struct smb2_context *smb2, uint32_t status,
                                 void *command_data, void *cb_data);
 
 /* Stat structure */
@@ -207,6 +207,10 @@ enum smb2_sec {
 
 void smb2_set_auth_mode(struct smb2_context *smb2, enum smb2_sec mode);
 
+uint32_t smb2_get_ntstatus(struct smb2_context *smb2);
+
+void smb2_set_ntstatus(struct smb2_context *smb2, uint32_t sts);
+
 /*
  * Asynchronous call to connect a TCP connection to the server
  *
@@ -253,10 +257,10 @@ int smb2_connect_share_async(struct smb2_context *smb2,
  * 0      : Connected to the share successfully.
  * -errno : Failure.
  */
-int smb2_connect_share(struct smb2_context *smb2,
-                       const char *server,
-                       const char *share,
-                       const char *user);
+uint32_t smb2_connect_share(struct smb2_context *smb2,
+                            const char *server,
+                            const char *share,
+                            const char *user);
 
 /*
  * Async call to disconnect from a share/
@@ -282,7 +286,7 @@ int smb2_disconnect_share_async(struct smb2_context *smb2,
  * 0      : Disconnected from the share successfully.
  * -errno : Failure.
  */
-int smb2_disconnect_share(struct smb2_context *smb2);
+uint32_t smb2_disconnect_share(struct smb2_context *smb2);
 
 /*
  * This function returns a description of the last encountered error.
@@ -529,7 +533,7 @@ int smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
 /*
  * Sync close()
  */
-int smb2_close(struct smb2_context *smb2, struct smb2fh *fh);
+uint32_t smb2_close(struct smb2_context *smb2, struct smb2fh *fh);
 
 /*
  * FSYNC
@@ -554,7 +558,7 @@ int smb2_fsync_async(struct smb2_context *smb2, struct smb2fh *fh,
 /*
  * Sync fsync()
  */
-int smb2_fsync(struct smb2_context *smb2, struct smb2fh *fh);
+uint32_t smb2_fsync(struct smb2_context *smb2, struct smb2fh *fh);
 
 /*
  * GetMaxReadWriteSize
@@ -591,8 +595,8 @@ int smb2_pread_async(struct smb2_context *smb2, struct smb2fh *fh,
  * Use smb2_get_max_read_size to discover the maximum data size that the
  * server supports.
  */
-int smb2_pread(struct smb2_context *smb2, struct smb2fh *fh,
-               uint8_t *buf, uint32_t count, uint64_t offset);
+uint32_t smb2_pread(struct smb2_context *smb2, struct smb2fh *fh,
+                    uint8_t *buf, uint32_t count, uint64_t offset);
 
 /*
  * PWRITE
@@ -622,8 +626,8 @@ int smb2_pwrite_async(struct smb2_context *smb2, struct smb2fh *fh,
  * Use smb2_get_max_write_size to discover the maximum data size that the
  * server supports.
  */
-int smb2_pwrite(struct smb2_context *smb2, struct smb2fh *fh,
-                uint8_t *buf, uint32_t count, uint64_t offset);
+uint32_t smb2_pwrite(struct smb2_context *smb2, struct smb2fh *fh,
+                     uint8_t *buf, uint32_t count, uint64_t offset);
 
 /*
  * READ
@@ -649,8 +653,8 @@ int smb2_read_async(struct smb2_context *smb2, struct smb2fh *fh,
 /*
  * Sync read()
  */
-int smb2_read(struct smb2_context *smb2, struct smb2fh *fh,
-              uint8_t *buf, uint32_t count);
+uint32_t smb2_read(struct smb2_context *smb2, struct smb2fh *fh,
+                   uint8_t *buf, uint32_t count);
 
 /*
  * WRITE
@@ -676,8 +680,8 @@ int smb2_write_async(struct smb2_context *smb2, struct smb2fh *fh,
 /*
  * Sync write()
  */
-int smb2_write(struct smb2_context *smb2, struct smb2fh *fh,
-               uint8_t *buf, uint32_t count);
+uint32_t smb2_write(struct smb2_context *smb2, struct smb2fh *fh,
+                    uint8_t *buf, uint32_t count);
 
 /*
  * Sync lseek()
@@ -711,7 +715,7 @@ int smb2_unlink_async(struct smb2_context *smb2, const char *path,
 /*
  * Sync unlink()
  */
-int smb2_unlink(struct smb2_context *smb2, const char *path);
+uint32_t smb2_unlink(struct smb2_context *smb2, const char *path);
 
 /*
  * RMDIR
@@ -736,7 +740,7 @@ int smb2_rmdir_async(struct smb2_context *smb2, const char *path,
 /*
  * Sync rmdir()
  */
-int smb2_rmdir(struct smb2_context *smb2, const char *path);
+uint32_t smb2_rmdir(struct smb2_context *smb2, const char *path);
 
 /*
  * MKDIR
@@ -761,7 +765,25 @@ int smb2_mkdir_async(struct smb2_context *smb2, const char *path,
 /*
  * Sync mkdir()
  */
-int smb2_mkdir(struct smb2_context *smb2, const char *path);
+uint32_t smb2_mkdir(struct smb2_context *smb2, const char *path);
+
+/*
+ * Async getinfo()
+ *
+ * Returns
+ *  0     : The operation was initiated. Result of the operation will be
+ *          reported through the callback function.
+ * -errno : There was an error. The callback function will not be invoked.
+ *
+ * When the callback is invoked, status indicates the result:
+ *      0 : Success. Command_data is struct smb2_stat_64
+ * -errno : An error occured.
+ */
+int
+smb2_getinfo_async(struct smb2_context *smb2,
+                   const char *path,
+                   smb2_file_info *info,
+                   smb2_command_cb cb, void *cb_data);
 
 /*
  * FSTAT
@@ -784,52 +806,43 @@ int smb2_fstat_async(struct smb2_context *smb2, struct smb2fh *fh,
 /*
  * Sync fstat()
  */
-int smb2_fstat(struct smb2_context *smb2, struct smb2fh *fh,
-               struct smb2_stat_64 *st);
-
-/*
- * Async smb2_getinfo()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success. Command_data is struct smb2_stat_64
- * -errno : An error occured.
- */
-int
-smb2_getinfo_async(struct smb2_context *smb2,
-                   const char *path,
-                   smb2_file_info *info,
-                   smb2_command_cb cb, void *cb_data);
+uint32_t smb2_fstat(struct smb2_context *smb2, struct smb2fh *fh,
+                    struct smb2_stat_64 *st);
 
 /*
  * Sync stat()
  */
-int smb2_stat(struct smb2_context *smb2, const char *path,
-              struct smb2_stat_64 *st);
+uint32_t smb2_stat(struct smb2_context *smb2, const char *path,
+                   struct smb2_stat_64 *st);
 
 /*
  * Sync statvfs()
  */
-int smb2_statvfs(struct smb2_context *smb2, const char *path,
-                 struct smb2_statvfs *statvfs);
+uint32_t smb2_statvfs(struct smb2_context *smb2, const char *path,
+                      struct smb2_statvfs *statvfs);
 
-int
-smb2_query_file_all_info_async(struct smb2_context *smb2, const char *path,
-                                struct smb2_file_info_all *all_info,
-                               smb2_command_cb cb, void *cb_data);
+/*
+ * Sync get_security()
+ *
+ * Returns:
+ * 0      : successfully send the message and received a reply.
+ * -errno : Failure.
+ */
+uint32_t smb2_get_security(struct smb2_context *smb2,
+                           const char *path,
+                           uint8_t **buf,
+                           uint32_t *buf_len);
+
 /*
  * Sync query_file_all_info()
  */
-int smb2_query_file_all_info(struct smb2_context *smb2,
-                             const char *path,
-                             struct smb2_file_info_all *all_info);
+uint32_t
+smb2_query_file_all_info(struct smb2_context *smb2,
+                         const char *path,
+                         struct smb2_file_info_all *all_info);
 
 /*
- * Async rename()
+ * Async setinfo()
  *
  * Returns
  *  0     : The operation was initiated. Result of the operation will be
@@ -840,37 +853,29 @@ int smb2_query_file_all_info(struct smb2_context *smb2,
  *      0 : Success.
  * -errno : An error occured.
  */
-int smb2_rename_async(struct smb2_context *smb2, const char *oldpath,
-                      const char *newpath, smb2_command_cb cb, void *cb_data);
+int
+smb2_setinfo_async(struct smb2_context *smb2,
+                   const char *path,
+                   smb2_file_info *info,
+                   smb2_command_cb cb, void *cb_data);
+
 
 /*
  * Sync rename()
  */
-int smb2_rename(struct smb2_context *smb2, const char *oldpath,
-              const char *newpath);
-        
-/*
- * Async truncate()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success.
- * -errno : An error occured.
- */
-int smb2_truncate_async(struct smb2_context *smb2, const char *path,
-                        uint64_t length, smb2_command_cb cb, void *cb_data);
+uint32_t smb2_rename(struct smb2_context *smb2,
+                     const char *oldpath,
+                     const char *newpath);
+
 /*
  * Sync truncate()
  * Function returns
  *      0 : Success
  * -errno : An error occured.
  */
-int smb2_truncate(struct smb2_context *smb2, const char *path,
-                  uint64_t length);
+uint32_t smb2_truncate(struct smb2_context *smb2,
+                       const char *path,
+                       uint64_t length);
 
 /*
  * Async ftruncate()
@@ -892,9 +897,31 @@ int smb2_ftruncate_async(struct smb2_context *smb2, struct smb2fh *fh,
  *      0 : Success
  * -errno : An error occured.
  */
-int smb2_ftruncate(struct smb2_context *smb2, struct smb2fh *fh,
-                   uint64_t length);
+uint32_t smb2_ftruncate(struct smb2_context *smb2,
+                        struct smb2fh *fh,
+                        uint64_t length);
 
+/*
+ * Sync set_security()
+ *
+ * Returns:
+ * 0      : successfully send the message and received a reply.
+ * -errno : Failure.
+ */
+uint32_t smb2_set_security(struct smb2_context *smb2,
+                           const char *path,
+                           uint8_t *buf,
+                           uint32_t buf_len);
+
+/* Sync set_file_basic_info()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ */
+uint32_t
+smb2_set_file_basic_info(struct smb2_context *smb2,
+                         const char *path,
+                         struct smb2_file_basic_info *info);
 
 /*
  * Async echo()
@@ -918,49 +945,7 @@ int smb2_echo_async(struct smb2_context *smb2,
  * 0      : successfully send the message and received a reply.
  * -errno : Failure.
  */
-int smb2_echo(struct smb2_context *smb2);
-
-/*
- * Sync get_security()
- *
- * Returns:
- * 0      : successfully send the message and received a reply.
- * -errno : Failure.
- */
-int smb2_get_security(struct smb2_context *smb2,
-                      const char *path,
-                      uint8_t **buf,
-                      uint32_t *buf_len);
-/*
- * Async set_security()
- *
- * Returns
- *  0     : The operation was initiated. Result of the operation will be
- *          reported through the callback function.
- * -errno : There was an error. The callback function will not be invoked.
- *
- * When the callback is invoked, status indicates the result:
- *      0 : Success.
- * -errno : An error occured.
- */
-int smb2_set_security_async(struct smb2_context *smb2,
-                            const char *path,
-                            uint8_t *buf,
-                            uint32_t buf_len,
-                            smb2_command_cb cb,
-                            void *cb_data);
-
-/*
- * Sync set_security()
- *
- * Returns:
- * 0      : successfully send the message and received a reply.
- * -errno : Failure.
- */
-int smb2_set_security(struct smb2_context *smb2,
-                      const char *path,
-                      uint8_t *buf,
-                      uint32_t buf_len);
+uint32_t smb2_echo(struct smb2_context *smb2);
 
 /*
  * IOCTL
@@ -988,10 +973,10 @@ int smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
 /*
  * Sync Ioctl()
  */
-int smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
-                uint32_t ioctl_ctl, uint32_t ioctl_flags,
-               uint8_t *input_buffer, uint32_t input_count,
-               uint8_t *output_buffer, uint32_t *output_count);
+uint32_t smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
+                    uint32_t ioctl_ctl, uint32_t ioctl_flags,
+                    uint8_t *input_buffer, uint32_t input_count,
+                    uint8_t *output_buffer, uint32_t *output_count);
 
 #define SHARE_STYPE_DISKTREE    0x00000000
 #define SHARE_STYPE_PRINTQ      0x00000001
@@ -1038,32 +1023,13 @@ struct smb2_shareinfo {
  *      0 : Success
  * -errno : An error occured.
  */
-int smb2_list_shares(struct smb2_context *smb2,
-                     const char *server,
-                     const char *user,
-                     uint32_t   shinfo_type,
-                     struct smb2_shareinfo **shares,
-                     int *numshares);
-
-/* Sync set_file_basic_info()
- * Function returns
- *      0 : Success
- * -errno : An error occured.
- */
 int
-smb2_set_file_basic_info(struct smb2_context *smb2,
-                         const char *path,
-                         struct smb2_file_basic_info *info);
-
-int
-smb2_setinfo_async(struct smb2_context *smb2,
-                   const char *path,
-                   smb2_file_info *info,
-                   smb2_command_cb cb, void *cb_data);
-
-#ifdef __cplusplus
-}
-#endif
+smb2_list_shares(struct smb2_context *smb2,
+                 const char *server,
+                 const char *user,
+                 uint32_t   shinfo_type,
+                 struct smb2_shareinfo **shares,
+                 int *numshares);
 
 /* Low 2 bits desctibe the type */
 #define SHARE_TYPE_DISKTREE  0
@@ -1125,5 +1091,9 @@ struct srvsvc_netshareenumall_rep {
  */
 int smb2_share_enum_async(struct smb2_context *smb2, const char *server,
                           smb2_command_cb cb, void *cb_data);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* !_LIBSMB2_H_ */

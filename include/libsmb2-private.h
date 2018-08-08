@@ -181,6 +181,7 @@ struct smb2_context {
         uint32_t max_write_size;
         uint16_t dialect;
 
+        uint32_t ntstatus;
         char error_string[MAX_ERROR_SIZE];
 };
 

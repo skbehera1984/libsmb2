@@ -358,7 +358,7 @@ decode_dirents(struct smb2_context *smb2, smb2dir *dir, struct smb2_iovec *vec)
 }
 
 static void
-querydir_cb(struct smb2_context *smb2, int status,
+querydir_cb(struct smb2_context *smb2, uint32_t status,
             void *command_data, void *private_data)
 {
         async_cb_data *querydir_data = private_data;
@@ -374,7 +374,7 @@ querydir_cb(struct smb2_context *smb2, int status,
                 vec.len = rep->output_buffer_length;
 
                 if (decode_dirents(smb2, dir, &vec) < 0) {
-                        querydir_data->cb(smb2, -ENOMEM, NULL, querydir_data->cb_data);
+                        querydir_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, querydir_data->cb_data);
                         free_smb2dir(dir);
                         querydir_data->acb_data_U.dir_data = NULL;
                         free(querydir_data);
@@ -392,7 +392,7 @@ querydir_cb(struct smb2_context *smb2, int status,
 
                 pdu = smb2_cmd_query_directory_async(smb2, &req, querydir_cb, querydir_data);
                 if (pdu == NULL) {
-                        querydir_data->cb(smb2, -ENOMEM, NULL, querydir_data->cb_data);
+                        querydir_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, querydir_data->cb_data);
                         free_smb2dir(dir);
                         querydir_data->acb_data_U.dir_data = NULL;
                         free(querydir_data);
@@ -409,7 +409,7 @@ querydir_cb(struct smb2_context *smb2, int status,
                 dir->index = 0;
 
                 /* dir will be freed in smb2_closedir() */
-                querydir_data->cb(smb2, 0, dir, querydir_data->cb_data);
+                querydir_data->cb(smb2, SMB2_STATUS_SUCCESS, dir, querydir_data->cb_data);
                 querydir_data->acb_data_U.dir_data = NULL;
                 free(querydir_data);
                 return;
@@ -418,7 +418,7 @@ querydir_cb(struct smb2_context *smb2, int status,
         smb2_set_error(smb2, "Query directory failed with (0x%08x) %s. %s",
                        status, nterror_to_str(status),
                        smb2_get_error(smb2));
-        querydir_data->cb(smb2, -nterror_to_errno(status), NULL, querydir_data->cb_data);
+        querydir_data->cb(smb2, status, NULL, querydir_data->cb_data);
         free_smb2dir(dir);
         querydir_data->acb_data_U.dir_data = NULL;
         free(querydir_data);
@@ -465,7 +465,7 @@ smb2_querydir_async(struct smb2_context *smb2, struct smb2fh *fh,
         pdu = smb2_cmd_query_directory_async(smb2, &req, querydir_cb, querydir_data);
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create query command.");
-                querydir_data->cb(smb2, -ENOMEM, NULL, querydir_data->cb_data);
+                querydir_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, querydir_data->cb_data);
                 free_smb2dir(dir);
                 querydir_data->acb_data_U.dir_data = NULL;
                 free(querydir_data);
@@ -490,7 +490,7 @@ smb2_free_auth_data(struct smb2_context *smb2)
 
 
 static void
-tree_connect_cb(struct smb2_context *smb2, int status,
+tree_connect_cb(struct smb2_context *smb2, uint32_t status,
                 void *command_data, void *private_data)
 {
         async_cb_data *tcon_data = private_data;
@@ -500,19 +500,19 @@ tree_connect_cb(struct smb2_context *smb2, int status,
                 smb2_set_error(smb2, "Session setup failed with (0x%08x) %s. %s",
                                status, nterror_to_str(status),
                                smb2_get_error(smb2));
-                tcon_data->cb(smb2, -nterror_to_errno(status), NULL, tcon_data->cb_data);
+                tcon_data->cb(smb2, status, NULL, tcon_data->cb_data);
                 smb2_free_auth_data(smb2);
                 free(tcon_data);
                 return;
         }
 
-        tcon_data->cb(smb2, 0, NULL, tcon_data->cb_data);
+        tcon_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, tcon_data->cb_data);
         smb2_free_auth_data(smb2);
         free(tcon_data);
 }
 
 static void
-session_setup_cb(struct smb2_context *smb2, int status,
+session_setup_cb(struct smb2_context *smb2, uint32_t status,
                  void *command_data, void *private_data)
 {
         async_cb_data *session_data = private_data;
@@ -526,7 +526,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
                                 smb2, session_data, rep->security_buffer,
                                 rep->security_buffer_length)) < 0) {
                         smb2_close_context(smb2);
-                        session_data->cb(smb2, ret, NULL, session_data->cb_data);
+                        session_data->cb(smb2, SMB2_STATUS_INTERNAL_ERROR, NULL, session_data->cb_data);
                         smb2_free_auth_data(smb2);
                         return;
                 }
@@ -541,7 +541,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
                 if (krb5_session_request(smb2, smb2->auth_data,
                                          rep->security_buffer,
                                          rep->security_buffer_length) < 0) {
-                        session_data->cb(smb2, -1, NULL, session_data->cb_data);
+                        session_data->cb(smb2, SMB2_STATUS_INTERNAL_ERROR, NULL, session_data->cb_data);
                         smb2_free_auth_data(smb2);
                         return;
                 }
@@ -551,8 +551,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
                 smb2_close_context(smb2);
                 smb2_set_error(smb2, "Session setup failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                session_data->cb(smb2, -nterror_to_errno(status), NULL,
-                                 session_data->cb_data);
+                session_data->cb(smb2, status, NULL, session_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
@@ -582,7 +581,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
                         smb2_set_error(smb2, "Signing required by server. Session "
                                        "Key is not available %s",
                                        smb2_get_error(smb2));
-                        session_data->cb(smb2, -1, NULL, session_data->cb_data);
+                        session_data->cb(smb2, SMB2_STATUS_NO_USER_SESSION_KEY, NULL, session_data->cb_data);
                         smb2_free_auth_data(smb2);
                         return;
                 }
@@ -608,7 +607,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
 #else
                         smb2_close_context(smb2);
                         smb2_set_error(smb2, "Signing Requires OpenSSL support");
-                        session_data->cb(smb2, -EINVAL, NULL, session_data->cb_data);
+                        session_data->cb(smb2, SMB2_STATUS_NOT_SUPPORTED, NULL, session_data->cb_data);
                         smb2_free_auth_data(smb2);
                         return;
 #endif
@@ -616,7 +615,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
                         smb2_close_context(smb2);
                         smb2_set_error(smb2, "Signing Required by server. "
                                              "Not yet implemented for SMB3.1");
-                        session_data->cb(smb2, -EINVAL, NULL, session_data->cb_data);
+                        session_data->cb(smb2, SMB2_STATUS_NOT_SUPPORTED, NULL, session_data->cb_data);
                         smb2_free_auth_data(smb2);
                         return;
                 }
@@ -630,7 +629,7 @@ session_setup_cb(struct smb2_context *smb2, int status,
         pdu = smb2_cmd_tree_connect_async(smb2, &req, tree_connect_cb, session_data);
         if (pdu == NULL) {
                 smb2_close_context(smb2);
-                session_data->cb(smb2, -ENOMEM, NULL, session_data->cb_data);
+                session_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, session_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
@@ -679,7 +678,7 @@ send_session_setup_request(struct smb2_context *smb2,
 }
 
 static void
-negotiate_cb(struct smb2_context *smb2, int status,
+negotiate_cb(struct smb2_context *smb2, uint32_t status,
              void *command_data, void *private_data)
 {
         async_cb_data *negotiate_data = private_data;
@@ -691,8 +690,7 @@ negotiate_cb(struct smb2_context *smb2, int status,
                 smb2_set_error(smb2, "Negotiate failed with (0x%08x) %s. %s",
                                status, nterror_to_str(status),
                                smb2_get_error(smb2));
-                negotiate_data->cb(smb2, -nterror_to_errno(status), NULL,
-                                   negotiate_data->cb_data);
+                negotiate_data->cb(smb2, status, NULL, negotiate_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
@@ -712,7 +710,7 @@ negotiate_cb(struct smb2_context *smb2, int status,
         if (rep->security_mode & SMB2_NEGOTIATE_SIGNING_REQUIRED) {
 #if !defined(HAVE_OPENSSL_LIBS)
                 smb2_set_error(smb2, "Signing Required by server. Not yet implemented");
-                negotiate_data->cb(smb2, -EINVAL, NULL, negotiate_data->cb_data);
+                negotiate_data->cb(smb2, SMB2_STATUS_NOT_SUPPORTED, NULL, negotiate_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
 #endif
@@ -734,21 +732,21 @@ negotiate_cb(struct smb2_context *smb2, int status,
         }
         if (smb2->auth_data == NULL) {
                 smb2_close_context(smb2);
-                negotiate_data->cb(smb2, -ENOMEM, NULL, negotiate_data->cb_data);
+                negotiate_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, negotiate_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
 
         if ((ret = send_session_setup_request(smb2, negotiate_data, NULL, 0)) < 0) {
                 smb2_close_context(smb2);
-                negotiate_data->cb(smb2, ret, NULL, negotiate_data->cb_data);
+                negotiate_data->cb(smb2, SMB2_STATUS_INTERNAL_ERROR, NULL, negotiate_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
 }
 
 static void
-connect_cb(struct smb2_context *smb2, int status,
+connect_cb(struct smb2_context *smb2, uint32_t status,
            void *command_data _U_, void *private_data)
 {
         async_cb_data *conn_data = private_data;
@@ -757,7 +755,7 @@ connect_cb(struct smb2_context *smb2, int status,
 
         if (status != 0) {
                 smb2_set_error(smb2, "Socket connect failed with %d", status);
-                conn_data->cb(smb2, -status, NULL, conn_data->cb_data);
+                conn_data->cb(smb2, status, NULL, conn_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
@@ -803,7 +801,7 @@ connect_cb(struct smb2_context *smb2, int status,
 
         pdu = smb2_cmd_negotiate_async(smb2, &req, negotiate_cb, conn_data);
         if (pdu == NULL) {
-                conn_data->cb(smb2, -ENOMEM, NULL, conn_data->cb_data);
+                conn_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, conn_data->cb_data);
                 smb2_free_auth_data(smb2);
                 return;
         }
@@ -877,7 +875,7 @@ free_smb2fh(struct smb2fh *fh)
 }
 
 static void
-close_cb(struct smb2_context *smb2, int status,
+close_cb(struct smb2_context *smb2, uint32_t status,
          void *command_data, void *private_data)
 {
         async_cb_data *close_data = private_data;
@@ -886,13 +884,13 @@ close_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_FILE_CLOSED) {
                 smb2_set_error(smb2, "Close failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                close_data->cb(smb2, -nterror_to_errno(status), NULL, close_data->cb_data);
+                close_data->cb(smb2, status, NULL, close_data->cb_data);
                 free_smb2fh(fh);
                 free(close_data);
                 return;
         }
 
-        close_data->cb(smb2, 0, NULL, close_data->cb_data);
+        close_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, close_data->cb_data);
         free_smb2fh(fh);
         free(close_data);
 }
@@ -932,7 +930,7 @@ smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-open_cb(struct smb2_context *smb2, int status,
+open_cb(struct smb2_context *smb2, uint32_t status,
         void *command_data, void *private_data)
 {
         async_cb_data *create_data = private_data;
@@ -941,7 +939,7 @@ open_cb(struct smb2_context *smb2, int status,
 
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "SMB2_CREATE failed - %s", smb2_get_error(smb2));
-                create_data->cb(smb2, -nterror_to_errno(status), NULL, create_data->cb_data);
+                create_data->cb(smb2, status, NULL, create_data->cb_data);
                 free_smb2fh(fh);
                 free(create_data);
                 return;
@@ -958,7 +956,7 @@ open_cb(struct smb2_context *smb2, int status,
         } else {
                 fh->file_id.persistent_id = rep->file_id.persistent_id;
                 fh->file_id.volatile_id = rep->file_id.volatile_id;
-                create_data->cb(smb2, 0, fh, create_data->cb_data);
+                create_data->cb(smb2, SMB2_STATUS_SUCCESS, fh, create_data->cb_data);
 
                 create_data->acb_data_U.fh = NULL;
                 free(create_data);
@@ -1218,7 +1216,7 @@ smb2_rmdir_async(struct smb2_context *smb2, const char *path,
 }
 
 static void
-fsync_cb(struct smb2_context *smb2, int status,
+fsync_cb(struct smb2_context *smb2, uint32_t status,
          void *command_data, void *private_data)
 {
         async_cb_data *fsync_data = private_data;
@@ -1226,12 +1224,12 @@ fsync_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "Flush failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                fsync_data->cb(smb2, -nterror_to_errno(status), NULL, fsync_data->cb_data);
+                fsync_data->cb(smb2, status, NULL, fsync_data->cb_data);
                 free(fsync_data);
                 return;
         }
 
-        fsync_data->cb(smb2, 0, NULL, fsync_data->cb_data);
+        fsync_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, fsync_data->cb_data);
         free(fsync_data);
 }
 
@@ -1269,7 +1267,7 @@ smb2_fsync_async(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-read_cb(struct smb2_context *smb2, int status,
+read_cb(struct smb2_context *smb2, uint32_t status,
       void *command_data, void *private_data)
 {
         async_cb_data *read_data = private_data;
@@ -1279,7 +1277,7 @@ read_cb(struct smb2_context *smb2, int status,
         if (status && status != SMB2_STATUS_END_OF_FILE) {
                 smb2_set_error(smb2, "Read/Write failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                read_data->cb(smb2, -nterror_to_errno(status), NULL, read_data->cb_data);
+                read_data->cb(smb2, status, NULL, read_data->cb_data);
                 free(read_data);
                 return;
         }
@@ -1364,7 +1362,7 @@ smb2_read_async(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-write_cb(struct smb2_context *smb2, int status,
+write_cb(struct smb2_context *smb2, uint32_t status,
       void *command_data, void *private_data)
 {
         async_cb_data *write_data = private_data;
@@ -1374,7 +1372,7 @@ write_cb(struct smb2_context *smb2, int status,
         if (status && status != SMB2_STATUS_END_OF_FILE) {
                 smb2_set_error(smb2, "Read/Write failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                write_data->cb(smb2, -nterror_to_errno(status), NULL, write_data->cb_data);
+                write_data->cb(smb2, status, NULL, write_data->cb_data);
                 free(write_data);
                 return;
         }
@@ -1494,7 +1492,7 @@ smb2_lseek(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-fstat_cb(struct smb2_context *smb2, int status,
+fstat_cb(struct smb2_context *smb2, uint32_t status,
          void *command_data, void *private_data)
 {
         async_cb_data *stat_data = private_data;
@@ -1503,8 +1501,7 @@ fstat_cb(struct smb2_context *smb2, int status,
         struct smb2_stat_64 *st = stat_data->acb_data_U.qs_info.info;
 
         if (status != SMB2_STATUS_SUCCESS) {
-                stat_data->cb(smb2, -nterror_to_errno(status),
-                       NULL, stat_data->cb_data);
+                stat_data->cb(smb2, status, NULL, stat_data->cb_data);
                 free(stat_data);
                 return;
         }
@@ -1531,7 +1528,7 @@ fstat_cb(struct smb2_context *smb2, int status,
 
         smb2_free_data(smb2, fs);
 
-        stat_data->cb(smb2, 0, st, stat_data->cb_data);
+        stat_data->cb(smb2, SMB2_STATUS_SUCCESS, st, stat_data->cb_data);
         free(stat_data);
 }
 
@@ -1576,7 +1573,7 @@ smb2_fstat_async(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-getinfo_create_cb(struct smb2_context *smb2, int status,
+getinfo_create_cb(struct smb2_context *smb2, uint32_t status,
                   void *command_data _U_, void *private_data)
 {
         async_cb_data *getinfo_data = private_data;
@@ -1584,7 +1581,7 @@ getinfo_create_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "Open failed with (0x%08x) %s.",
                                status, nterror_to_str(status));
-                getinfo_data->cb(smb2, -nterror_to_errno(status), NULL, getinfo_data->cb_data);
+                getinfo_data->cb(smb2, status, NULL, getinfo_data->cb_data);
                 getinfo_data->status = status;
                 return;
         }
@@ -1592,7 +1589,7 @@ getinfo_create_cb(struct smb2_context *smb2, int status,
 }
 
 static void
-getinfo_close_cb(struct smb2_context *smb2, int status,
+getinfo_close_cb(struct smb2_context *smb2, uint32_t status,
                  void *command_data _U_, void *private_data)
 {
         async_cb_data *getinfo_data = private_data;
@@ -1605,11 +1602,11 @@ getinfo_close_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "CloseFile failed with (0x%08x) %s.",
                                status, nterror_to_str(status));
-                getinfo_data->cb(smb2, -nterror_to_errno(status), NULL, getinfo_data->cb_data);
+                getinfo_data->cb(smb2, status, NULL, getinfo_data->cb_data);
                 return;
         }
 
-        getinfo_data->cb(smb2, -nterror_to_errno(getinfo_data->status),
+        getinfo_data->cb(smb2, getinfo_data->status,
                          getinfo_data->acb_data_U.qs_info.info,
                          getinfo_data->cb_data);
         getinfo_data->acb_data_U.qs_info.info = NULL;
@@ -1617,7 +1614,7 @@ getinfo_close_cb(struct smb2_context *smb2, int status,
 }
 
 static void
-getinfo_query_cb(struct smb2_context *smb2, int status,
+getinfo_query_cb(struct smb2_context *smb2, uint32_t status,
                  void *command_data, void *private_data)
 {
         async_cb_data *getinfo_data = private_data;
@@ -1632,8 +1629,7 @@ getinfo_query_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "QueryFileInfo failed with (0x%08x) %s.",
                                status, nterror_to_str(status));
-                getinfo_data->cb(smb2, -nterror_to_errno(status),
-                                 NULL, getinfo_data->cb_data);
+                getinfo_data->cb(smb2, status, NULL, getinfo_data->cb_data);
                 return;
         }
 
@@ -1703,7 +1699,7 @@ getinfo_query_cb(struct smb2_context *smb2, int status,
                 smb2_set_error(smb2, "Invalid INFO TYPE");
         }
 
-        getinfo_data->cb(smb2, 0, NULL, getinfo_data->cb_data);
+        getinfo_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, getinfo_data->cb_data);
         if (rep->output_buffer != NULL) {
                 smb2_free_data(smb2, rep->output_buffer); rep->output_buffer = NULL;
         }
@@ -1794,7 +1790,7 @@ smb2_getinfo_async(struct smb2_context *smb2,
 
         next_pdu = smb2_cmd_close_async(smb2, &cl_req, getinfo_close_cb, getinfo_data);
         if (next_pdu == NULL) {
-                getinfo_data->cb(smb2, -ENOMEM, NULL, getinfo_data->cb_data);
+                getinfo_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, getinfo_data->cb_data);
                 free(getinfo_data);
                 smb2_free_pdu(smb2, pdu);
                 return -1;
@@ -1807,13 +1803,12 @@ smb2_getinfo_async(struct smb2_context *smb2,
 }
 
 static void
-ftrunc_cb_1(struct smb2_context *smb2, int status,
+ftrunc_cb_1(struct smb2_context *smb2, uint32_t status,
             void *command_data _U_, void *private_data)
 {
         async_cb_data *cb_data = private_data;
 
-        cb_data->cb(smb2, -nterror_to_errno(status),
-                    NULL, cb_data->cb_data);
+        cb_data->cb(smb2, status, NULL, cb_data->cb_data);
         free(cb_data);
 }
 
@@ -1857,27 +1852,27 @@ smb2_ftruncate_async(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-disconnect_cb_2(struct smb2_context *smb2, int status,
-           void *command_data _U_, void *private_data)
+disconnect_cb_2(struct smb2_context *smb2, uint32_t status,
+                void *command_data _U_, void *private_data)
 {
         async_cb_data *dc_data = private_data;
 
-        dc_data->cb(smb2, 0, NULL, dc_data->cb_data);
+        dc_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, dc_data->cb_data);
         free(dc_data);
         close(smb2->fd);
         smb2->fd = -1;
 }
 
 static void
-disconnect_cb_1(struct smb2_context *smb2, int status,
-           void *command_data _U_, void *private_data)
+disconnect_cb_1(struct smb2_context *smb2, uint32_t status,
+                void *command_data _U_, void *private_data)
 {
         async_cb_data *dc_data = private_data;
         struct smb2_pdu *pdu;
 
         pdu = smb2_cmd_logoff_async(smb2, disconnect_cb_2, dc_data);
         if (pdu == NULL) {
-                dc_data->cb(smb2, -ENOMEM, NULL, dc_data->cb_data);
+                dc_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, dc_data->cb_data);
                 free(dc_data);
                 return;
         }
@@ -1912,13 +1907,12 @@ smb2_disconnect_share_async(struct smb2_context *smb2,
 }
 
 static void
-echo_cb(struct smb2_context *smb2, int status,
-           void *command_data _U_, void *private_data)
+echo_cb(struct smb2_context *smb2, uint32_t status,
+        void *command_data _U_, void *private_data)
 {
         async_cb_data *cb_data = private_data;
 
-        cb_data->cb(smb2, -nterror_to_errno(status),
-                    NULL, cb_data->cb_data);
+        cb_data->cb(smb2, status, NULL, cb_data->cb_data);
         free(cb_data);
 }
 
@@ -1962,7 +1956,7 @@ smb2_get_max_write_size(struct smb2_context *smb2)
 }
 
 static void
-ioctl_cb(struct smb2_context *smb2, int status,
+ioctl_cb(struct smb2_context *smb2, uint32_t status,
          void *command_data, void *private_data)
 {
         async_cb_data *ioctl_d = private_data;
@@ -1972,7 +1966,7 @@ ioctl_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "IOCTL failed with (0x%08x) %s",
                                status, nterror_to_str(status));
-                ioctl_d->cb(smb2, -nterror_to_errno(status), NULL, ioctl_d->cb_data);
+                ioctl_d->cb(smb2, status, NULL, ioctl_d->cb_data);
                 free(ioctl_d);
                 return;
         }
@@ -2038,7 +2032,7 @@ smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
 }
 
 static void
-setinfo_create_cb(struct smb2_context *smb2, int status,
+setinfo_create_cb(struct smb2_context *smb2, uint32_t status,
                   void *command_data _U_, void *private_data)
 {
         async_cb_data *setinfoData = private_data;
@@ -2046,8 +2040,7 @@ setinfo_create_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "Open failed with (0x%08x) %s.",
                                status, nterror_to_str(status));
-                setinfoData->cb(smb2, -nterror_to_errno(status),
-                                NULL, setinfoData->cb_data);
+                setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
                 setinfoData->status = status;
                 return;
         }
@@ -2055,8 +2048,8 @@ setinfo_create_cb(struct smb2_context *smb2, int status,
 }
 
 static void
-setinfo_set_cb(struct smb2_context *smb2, int status,
-                     void *command_data, void *private_data)
+setinfo_set_cb(struct smb2_context *smb2, uint32_t status,
+               void *command_data, void *private_data)
 {
         async_cb_data *setinfoData = private_data;
 
@@ -2068,18 +2061,16 @@ setinfo_set_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "SetInfo failed with (0x%08x) %s.",
                                status, nterror_to_str(status));
-                setinfoData->cb(smb2, -nterror_to_errno(status),
-                                NULL, setinfoData->cb_data);
+                setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
                 return;
         }
 
-        setinfoData->cb(smb2, -nterror_to_errno(status),
-                        NULL, setinfoData->cb_data);
+        setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
 }
 
 static void
-setinfo_close_cb(struct smb2_context *smb2, int status,
-                       void *command_data _U_, void *private_data)
+setinfo_close_cb(struct smb2_context *smb2, uint32_t status,
+                 void *command_data _U_, void *private_data)
 {
         async_cb_data *setinfoData = private_data;
 
@@ -2091,13 +2082,11 @@ setinfo_close_cb(struct smb2_context *smb2, int status,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "CloseFile failed with (0x%08x) %s.",
                                status, nterror_to_str(status));
-                setinfoData->cb(smb2, -nterror_to_errno(status),
-                                NULL, setinfoData->cb_data);
+                setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
                 return;
         }
 
-        setinfoData->cb(smb2, -nterror_to_errno(status),
-                        NULL, setinfoData->cb_data);
+        setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
         free(setinfoData);
 }
 
@@ -2220,7 +2209,7 @@ smb2_setinfo_async(struct smb2_context *smb2,
         if (next_pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create close command. %s",
                                smb2_get_error(smb2));
-                setinfoData->cb(smb2, -ENOMEM, NULL, setinfoData->cb_data);
+                setinfoData->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, setinfoData->cb_data);
                 free(setinfoData);
                 smb2_free_pdu(smb2, pdu);
                 return -1;

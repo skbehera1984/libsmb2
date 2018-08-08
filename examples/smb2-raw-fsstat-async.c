@@ -41,7 +41,7 @@ int usage(void)
 
 struct sync_cb_data {
 	int is_finished;
-	int status;
+	uint32_t status;
 	void *ptr;
 };
 
@@ -71,8 +71,9 @@ static int wait_for_reply(struct smb2_context *smb2,
         return 0;
 }
 
-static void generic_status_cb(struct smb2_context *smb2, int status,
-                    void *command_data, void *private_data)
+static void
+generic_status_cb(struct smb2_context *smb2, uint32_t status,
+                  void *command_data, void *private_data)
 {
         struct sync_cb_data *cb_data = private_data;
 
@@ -89,7 +90,7 @@ struct stat_cb_data {
 };
 
 static void
-stat_cb_3(struct smb2_context *smb2, int status,
+stat_cb_3(struct smb2_context *smb2, uint32_t status,
           void *command_data _U_, void *private_data)
 {
         struct stat_cb_data *stat_data = private_data;
@@ -104,7 +105,7 @@ stat_cb_3(struct smb2_context *smb2, int status,
 }
 
 static void
-stat_cb_2(struct smb2_context *smb2, int status,
+stat_cb_2(struct smb2_context *smb2, uint32_t status,
           void *command_data, void *private_data)
 {
         struct stat_cb_data *stat_data = private_data;
@@ -171,7 +172,7 @@ stat_cb_2(struct smb2_context *smb2, int status,
 }
 
 static void
-stat_cb_1(struct smb2_context *smb2, int status,
+stat_cb_1(struct smb2_context *smb2, uint32_t status,
           void *command_data _U_, void *private_data)
 {
         struct stat_cb_data *stat_data = private_data;
