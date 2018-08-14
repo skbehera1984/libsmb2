@@ -376,6 +376,16 @@ void smb2_queue_pdu(struct smb2_context *smb2, struct smb2_pdu *pdu);
 struct smb2fh {
         smb2_file_id file_id;
         int64_t offset;
+
+        uint8_t oplock_level;
+        uint32_t create_action;
+        uint64_t creation_time;
+        uint64_t lastAccess_time;
+        uint64_t lastWrite_time;
+        uint64_t change_time;
+        uint64_t allocation_size;
+        uint64_t end_of_file;
+        uint32_t file_attributes;
 };
 
 /*

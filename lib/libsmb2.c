@@ -956,6 +956,17 @@ open_cb(struct smb2_context *smb2, uint32_t status,
         } else {
                 fh->file_id.persistent_id = rep->file_id.persistent_id;
                 fh->file_id.volatile_id = rep->file_id.volatile_id;
+
+                fh->oplock_level = rep->oplock_level;
+                fh->create_action = rep->create_action;
+                fh->creation_time = rep->creation_time;
+                fh->lastAccess_time = rep->last_access_time;
+                fh->lastWrite_time = rep->last_write_time;
+                fh->change_time = rep->change_time;
+                fh->allocation_size = rep->allocation_size;
+                fh->end_of_file = rep->end_of_file;
+                fh->file_attributes = rep->file_attributes;
+
                 create_data->cb(smb2, SMB2_STATUS_SUCCESS, fh, create_data->cb_data);
 
                 create_data->acb_data_U.fh = NULL;
