@@ -204,8 +204,8 @@ typedef struct _async_cb_data {
         smb2_command_cb cb;
         void            *cb_data;
         uint32_t        status;
+        struct smb2fh   *fh;
         union {
-                struct smb2fh    *fh;
                 query_set_data   qs_info;
                 ioctl_data       ioctl;
                 create_cb_data   cr_data;
@@ -879,7 +879,7 @@ close_cb(struct smb2_context *smb2, uint32_t status,
          void *command_data, void *private_data)
 {
         async_cb_data *close_data = private_data;
-        struct smb2fh *fh = close_data->acb_data_U.fh;
+        struct smb2fh *fh = close_data->fh;
 
         if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_FILE_CLOSED) {
                 smb2_set_error(smb2, "Close failed with (0x%08x) %s",
@@ -912,7 +912,7 @@ smb2_close_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         close_data->cb = cb;
         close_data->cb_data = cb_data;
-        close_data->acb_data_U.fh = fh;
+        close_data->fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_close_request));
         req.flags = SMB2_CLOSE_FLAG_POSTQUERY_ATTRIB;
@@ -934,7 +934,7 @@ open_cb(struct smb2_context *smb2, uint32_t status,
         void *command_data, void *private_data)
 {
         async_cb_data *create_data = private_data;
-        struct smb2fh *fh = create_data->acb_data_U.fh;
+        struct smb2fh *fh = create_data->fh;
         struct smb2_create_reply *rep = command_data;
 
         if (status != SMB2_STATUS_SUCCESS) {
@@ -949,8 +949,9 @@ open_cb(struct smb2_context *smb2, uint32_t status,
         if (create_data->acb_data_U.cr_data.needToClose) {
                 if (smb2_close_async(smb2, fh, create_data->cb, create_data->cb_data) != 0) {
                         smb2_set_error(smb2, "SMB2_CLOSE failed - %s", smb2_get_error(smb2));
+                        free(create_data->fh);
                 }
-                create_data->acb_data_U.fh = NULL;
+                create_data->fh = NULL;
                 free(create_data);
                 return;
         } else {
@@ -969,7 +970,7 @@ open_cb(struct smb2_context *smb2, uint32_t status,
 
                 create_data->cb(smb2, SMB2_STATUS_SUCCESS, fh, create_data->cb_data);
 
-                create_data->acb_data_U.fh = NULL;
+                create_data->fh = NULL;
                 free(create_data);
         }
 
@@ -1000,12 +1001,12 @@ smb2_open_file_async(struct smb2_context *smb2,
         }
         memset(create_data, 0, sizeof(async_cb_data));
 
-        create_data->acb_data_U.fh = malloc(sizeof(struct smb2fh));
-        if (create_data->acb_data_U.fh == NULL) {
+        create_data->fh = malloc(sizeof(struct smb2fh));
+        if (create_data->fh == NULL) {
                 smb2_set_error(smb2, "Failed to allocate smbfh");
                 return -ENOMEM;
         }
-        memset(create_data->acb_data_U.fh, 0, sizeof(struct smb2fh));
+        memset(create_data->fh, 0, sizeof(struct smb2fh));
 
         create_data->cb = cb;
         create_data->cb_data = cb_data;
@@ -1261,7 +1262,7 @@ smb2_fsync_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         fsync_data->cb = cb;
         fsync_data->cb_data = cb_data;
-        fsync_data->acb_data_U.fh = fh;
+        fsync_data->fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_flush_request));
         req.file_id.persistent_id = fh->file_id.persistent_id;
@@ -1282,7 +1283,7 @@ read_cb(struct smb2_context *smb2, uint32_t status,
       void *command_data, void *private_data)
 {
         async_cb_data *read_data = private_data;
-        struct smb2fh *fh = read_data->acb_data_U.fh;
+        struct smb2fh *fh = read_data->fh;
         struct smb2_read_reply *rep = command_data;
 
         if (status && status != SMB2_STATUS_END_OF_FILE) {
@@ -1339,7 +1340,7 @@ smb2_pread_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         read_data->cb = cb;
         read_data->cb_data = cb_data;
-        read_data->acb_data_U.fh = fh;
+        read_data->fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_read_request));
         req.flags = 0;
@@ -1377,7 +1378,7 @@ write_cb(struct smb2_context *smb2, uint32_t status,
       void *command_data, void *private_data)
 {
         async_cb_data *write_data = private_data;
-        struct smb2fh *fh = write_data->acb_data_U.fh;
+        struct smb2fh *fh = write_data->fh;
         struct smb2_write_reply *rep = command_data;
 
         if (status && status != SMB2_STATUS_END_OF_FILE) {
@@ -1434,7 +1435,7 @@ smb2_pwrite_async(struct smb2_context *smb2, struct smb2fh *fh,
 
         write_data->cb = cb;
         write_data->cb_data = cb_data;
-        write_data->acb_data_U.fh = fh;
+        write_data->fh = fh;
 
         memset(&req, 0, sizeof(struct smb2_write_request));
         req.length = count;
