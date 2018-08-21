@@ -1731,6 +1731,65 @@ getinfo_query_cb(struct smb2_context *smb2, uint32_t status,
 }
 
 int
+smb2_fgetinfo_async(struct smb2_context *smb2,
+                    struct smb2fh *fh,
+                    smb2_file_info *info,
+                    smb2_command_cb cb, void *cb_data)
+{
+        async_cb_data *getinfo_data;
+        struct smb2_query_info_request qi_req;
+        struct smb2_pdu *pdu;
+
+        if (fh == NULL) {
+                smb2_set_error(smb2, "FileHandle is not provided");
+                return -1;
+        }
+
+        if (info == NULL) {
+                smb2_set_error(smb2, "No info type provided for query");
+                return -1;
+        }
+
+        getinfo_data = malloc(sizeof(async_cb_data));
+        if (getinfo_data == NULL) {
+                smb2_set_error(smb2, "Failed to allocate getinfo_data");
+                return -1;
+        }
+        memset(getinfo_data, 0, sizeof(async_cb_data));
+
+        getinfo_data->cb      = cb;
+        getinfo_data->cb_data = cb_data;
+        getinfo_data->acb_data_U.qs_info.info    = info;
+
+        memset(&qi_req, 0, sizeof(struct smb2_query_info_request));
+        qi_req.info_type = info->info_type;
+        qi_req.file_info_class = info->file_info_class;
+        qi_req.output_buffer_length = 65535;
+        qi_req.additional_information = 0;
+        if (info->info_type == SMB2_0_INFO_SECURITY) {
+                qi_req.file_info_class = 0;
+                qi_req.additional_information =
+                               SMB2_OWNER_SECURITY_INFORMATION |
+                               SMB2_GROUP_SECURITY_INFORMATION |
+                               SMB2_DACL_SECURITY_INFORMATION;
+        }
+        qi_req.flags = 0;
+        qi_req.file_id.persistent_id = fh->file_id.persistent_id;
+        qi_req.file_id.volatile_id= fh->file_id.volatile_id;
+
+        pdu = smb2_cmd_query_info_async(smb2, &qi_req, getinfo_query_cb, getinfo_data);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create query command");
+                free(getinfo_data);
+                return -1;
+        }
+
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
+}
+
+int
 smb2_getinfo_async(struct smb2_context *smb2,
                    const char *path,
                    smb2_file_info *info,
@@ -2112,6 +2171,79 @@ setinfo_close_cb(struct smb2_context *smb2, uint32_t status,
 
         setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
         free(setinfoData);
+}
+
+int
+smb2_fsetinfo_async(struct smb2_context *smb2,
+                    struct smb2fh *fh,
+                    smb2_file_info *info,
+                    smb2_command_cb cb, void *cb_data)
+{
+        async_cb_data *setinfoData = NULL;
+        struct smb2_set_info_request si_req;
+        struct smb2_pdu *pdu;
+
+        if (fh == NULL) {
+                smb2_set_error(smb2, "%s : no FileHandle provided", __func__);
+                return -1;
+        }
+
+        if (info == NULL) {
+                smb2_set_error(smb2, "%s : no info provided", __func__);
+                return -1;
+        }
+
+        if (info->info_type != SMB2_0_INFO_FILE && info->info_type != SMB2_0_INFO_SECURITY) {
+                smb2_set_error(smb2, "%s: Invalid INFOTYPE to set", __func__);
+                return -1;
+        }
+
+        if (info->info_type == SMB2_0_INFO_SECURITY)
+                info->file_info_class = 0;
+
+        setinfoData = (async_cb_data *) malloc(sizeof(async_cb_data));
+        if (setinfoData == NULL) {
+                smb2_set_error(smb2, "%s : failed to allocate setinfoData", __func__);
+                return -1;
+        }
+        memset(setinfoData, 0, sizeof(async_cb_data));
+        setinfoData->cb = cb;
+        setinfoData->cb_data = cb_data;
+
+        memset(&si_req, 0, sizeof(struct smb2_set_info_request));
+        si_req.info_type = info->info_type;
+        si_req.file_info_class = info->file_info_class;
+        si_req.file_id.persistent_id = fh->file_id.persistent_id;
+        si_req.file_id.volatile_id= fh->file_id.volatile_id;
+
+        if (info->file_info_class == SMB2_FILE_RENAME_INFORMATION) {
+                si_req.input_data = &((info->u_info).rename_info);
+        } else if(info->file_info_class == SMB2_FILE_END_OF_FILE_INFORMATION) {
+                si_req.input_data = &((info->u_info).eof_info);
+        } else if (info->file_info_class == SMB2_FILE_BASIC_INFORMATION) {
+                si_req.input_data = &((info->u_info).basic_info);
+        } else if (info->file_info_class == SMB2_FILE_FULL_EA_INFORMATION) {
+                si_req.input_data = &((info->u_info).extended_info);
+        }
+
+        if (info->info_type == SMB2_0_INFO_SECURITY) {
+                si_req.additional_information =
+                                 SMB2_OWNER_SECURITY_INFORMATION |
+                                 SMB2_GROUP_SECURITY_INFORMATION |
+                                 SMB2_DACL_SECURITY_INFORMATION;
+                si_req.input_data = &((info->u_info).sec_info);
+        }
+
+        pdu = smb2_cmd_set_info_async(smb2, &si_req, setinfo_set_cb, setinfoData);
+        if (pdu == NULL) {
+                smb2_set_error(smb2, "Failed to create set-info command. %s", smb2_get_error(smb2));
+                free(setinfoData);
+                return -1;
+        }
+
+        smb2_queue_pdu(smb2, pdu);
+
+        return 0;
 }
 
 int

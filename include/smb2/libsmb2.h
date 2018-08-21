@@ -822,6 +822,12 @@ smb2_getinfo_async(struct smb2_context *smb2,
                    smb2_file_info *info,
                    smb2_command_cb cb, void *cb_data);
 
+int
+smb2_fgetinfo_async(struct smb2_context *smb2,
+                    struct smb2fh *fh,
+                    smb2_file_info *info,
+                    smb2_command_cb cb, void *cb_data);
+
 /*
  * FSTAT
  */
@@ -896,6 +902,12 @@ smb2_setinfo_async(struct smb2_context *smb2,
                    smb2_file_info *info,
                    smb2_command_cb cb, void *cb_data);
 
+
+int
+smb2_fsetinfo_async(struct smb2_context *smb2,
+                    struct smb2fh *fh,
+                    smb2_file_info *info,
+                    smb2_command_cb cb, void *cb_data);
 
 /*
  * Sync rename()
