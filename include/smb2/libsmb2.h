@@ -876,13 +876,24 @@ uint32_t smb2_get_security(struct smb2_context *smb2,
                            uint8_t **buf,
                            uint32_t *buf_len);
 
+uint32_t
+smb2_fget_security(struct smb2_context *smb2,
+                   struct smb2fh *fh,
+                   uint8_t **buf,
+                   uint32_t *buf_len);
+
 /*
- * Sync query_file_all_info()
+ * Sync getinfo_all()
  */
 uint32_t
-smb2_query_file_all_info(struct smb2_context *smb2,
-                         const char *path,
-                         struct smb2_file_info_all *all_info);
+smb2_getinfo_all(struct smb2_context *smb2,
+                 const char *path,
+                 struct smb2_file_info_all *all_info);
+
+uint32_t
+smb2_fgetinfo_all(struct smb2_context *smb2,
+                  struct smb2fh *fh,
+                  struct smb2_file_info_all *all_info);
 
 /*
  * Async setinfo()
@@ -962,15 +973,26 @@ uint32_t smb2_set_security(struct smb2_context *smb2,
                            uint8_t *buf,
                            uint32_t buf_len);
 
-/* Sync set_file_basic_info()
+uint32_t
+smb2_fset_security(struct smb2_context *smb2,
+                   struct smb2fh *fh,
+                   uint8_t *buf,
+                   uint32_t buf_len);
+
+/* Sync setinfo_basic()
  * Function returns
  *      0 : Success
  * -errno : An error occured.
  */
 uint32_t
-smb2_set_file_basic_info(struct smb2_context *smb2,
-                         const char *path,
-                         struct smb2_file_basic_info *info);
+smb2_setinfo_basic(struct smb2_context *smb2,
+                   const char *path,
+                   struct smb2_file_basic_info *info);
+
+uint32_t
+smb2_fsetinfo_basic(struct smb2_context *smb2,
+                    struct smb2fh *fh,
+                    struct smb2_file_basic_info *info);
 
 /*
  * Async echo()
@@ -1080,41 +1102,57 @@ smb2_list_shares(struct smb2_context *smb2,
                  struct smb2_shareinfo **shares,
                  int *numshares);
 
-/* Sync smb2_get_file_extended_info()
+/* Sync smb2_getinfo_extended()
  * Function returns
  *      0 : Success
  * -errno : An error occured.
  *@@:API user must call smb2_free_file_extended_info()
  */
 uint32_t
-smb2_get_file_extended_info(struct smb2_context *smb2,
-                            const char *path,
-                            struct smb2_file_extended_info **extended_info);
+smb2_getinfo_extended(struct smb2_context *smb2,
+                      const char *path,
+                      struct smb2_file_extended_info **extended_info);
 
-/* Sync smb2_set_file_extended_info()
+uint32_t
+smb2_fgetinfo_extended(struct smb2_context *smb2,
+                       struct smb2fh *fh,
+                       struct smb2_file_extended_info **extended_info);
+
+/* Sync smb2_setinfo_extended()
  * Function returns
  *      0 : Success
  * -errno : An error occured.
  */
 uint32_t
-smb2_set_file_extended_info(struct smb2_context *smb2,
-                            const char *path,
-                            struct smb2_file_extended_info *extended_info,
-                            const int count);
+smb2_setinfo_extended(struct smb2_context *smb2,
+                      const char *path,
+                      struct smb2_file_extended_info *extended_info,
+                      const int count);
+
+uint32_t
+smb2_fsetinfo_extended(struct smb2_context *smb2,
+                       struct smb2fh *fh,
+                       struct smb2_file_extended_info* extended_info,
+                       const int count);
 
 void smb2_free_file_extended_info(struct smb2_context *smb2,
                                   struct smb2_file_extended_info *extended_info);
 
-/* Sync smb2_get_file_stream_info()
+/* Sync smb2_getinfo_stream()
  * Function returns
  *      0 : Success
  * -errno : An error occured.
  *@@:API user must call smb2_free_file_stream_info()
  */
 uint32_t
-smb2_get_file_stream_info(struct smb2_context *smb2,
-                          const char *path,
-                          struct smb2_file_stream_info **stream_info);
+smb2_getinfo_stream(struct smb2_context *smb2,
+                    const char *path,
+                    struct smb2_file_stream_info **stream_info);
+
+uint32_t
+smb2_fgetinfo_stream(struct smb2_context *smb2,
+                     struct smb2fh *fh,
+                     struct smb2_file_stream_info **stream_info);
 
 void smb2_free_file_stream_info(struct smb2_context *smb2,
                                 struct smb2_file_stream_info *stream_info);
