@@ -377,6 +377,9 @@ struct smb2fh {
         smb2_file_id file_id;
         int64_t offset;
 
+        uint32_t byte_count;
+        uint32_t bytes_remaining;
+
         uint8_t oplock_level;
         uint32_t create_action;
         uint64_t creation_time;

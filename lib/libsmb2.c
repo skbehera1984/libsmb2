@@ -1294,11 +1294,11 @@ read_cb(struct smb2_context *smb2, uint32_t status,
                 return;
         }
 
-        if (status == SMB2_STATUS_SUCCESS) {
-                fh->offset += rep->data_length;
-        }
+        fh->offset += rep->data_length;
+        fh->byte_count = rep->data_length;
+        fh->bytes_remaining = rep->data_remaining;
 
-        read_data->cb(smb2, rep->data_length, NULL, read_data->cb_data);
+        read_data->cb(smb2, status, NULL, read_data->cb_data);
         free(read_data);
 }
 
@@ -1389,11 +1389,11 @@ write_cb(struct smb2_context *smb2, uint32_t status,
                 return;
         }
 
-        if (status == SMB2_STATUS_SUCCESS) {
-                fh->offset += rep->count;
-        }
+        fh->offset += rep->count;
+        fh->byte_count = rep->count;
+        fh->bytes_remaining = rep->remaining;
 
-        write_data->cb(smb2, rep->count, NULL, write_data->cb_data);
+        write_data->cb(smb2, status, NULL, write_data->cb_data);
         free(write_data);
 }
 

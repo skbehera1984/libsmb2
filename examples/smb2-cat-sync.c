@@ -41,50 +41,54 @@ int usage(void)
 
 int main(int argc, char *argv[])
 {
-        struct smb2_context *smb2;
-        struct smb2_url *url;
-        struct smb2fh *fh;
-        int count;
+		struct smb2_context *smb2;
+		struct smb2_url *url;
+		struct smb2fh *fh;
+		uint32_t status = 0;
 
-        if (argc < 2) {
-                usage();
-        }
+		if (argc < 2) {
+				usage();
+		}
 
-	smb2 = smb2_init_context();
-        if (smb2 == NULL) {
-                fprintf(stderr, "Failed to init context\n");
-                exit(0);
-        }
+		smb2 = smb2_init_context();
+		if (smb2 == NULL) {
+				fprintf(stderr, "Failed to init context\n");
+				exit(0);
+		}
 
-        url = smb2_parse_url(smb2, argv[1]);
-        if (url == NULL) {
-                fprintf(stderr, "Failed to parse url: %s\n",
-                        smb2_get_error(smb2));
-                exit(0);
-        }
+		url = smb2_parse_url(smb2, argv[1]);
+		if (url == NULL) {
+				fprintf(stderr, "Failed to parse url: %s\n", smb2_get_error(smb2));
+				exit(0);
+		}
 
-        smb2_set_security_mode(smb2, SMB2_NEGOTIATE_SIGNING_ENABLED);
+		smb2_set_security_mode(smb2, SMB2_NEGOTIATE_SIGNING_ENABLED);
 
-	if (smb2_connect_share(smb2, url->server, url->share, url->user) != 0) {
-		printf("smb2_connect_share failed. %s\n", smb2_get_error(smb2));
-		exit(10);
-	}
+		if (smb2_connect_share(smb2, url->server, url->share, url->user) != 0) {
+				printf("smb2_connect_share failed. %s\n", smb2_get_error(smb2));
+				exit(10);
+		}
 
-        fh = smb2_open(smb2, url->path, O_RDONLY);
-        if (fh == NULL) {
-		printf("smb2_open failed. %s\n", smb2_get_error(smb2));
-		exit(10);
-        }
+		fh = smb2_open(smb2, url->path, O_RDONLY);
+		if (fh == NULL) {
+				printf("smb2_open failed. %s\n", smb2_get_error(smb2));
+				exit(10);
+		}
 
-        while ((count = smb2_pread(smb2, fh, buf, 1024, pos)) > 0) {
-                write(0, buf, count);
-                pos += count;
-        };
-                
-        smb2_close(smb2, fh);
-        smb2_disconnect_share(smb2);
-        smb2_destroy_url(url);
-        smb2_destroy_context(smb2);
-        
-	return 0;
+		while ((status = smb2_pread(smb2, fh, buf, 1024, pos)) != SMB2_STATUS_END_OF_FILE ) {
+				write(0, buf, fh->byte_count);
+				pos += fh->byte_count;
+		}
+		// EOF might have returned some data
+		if (fh->byte_count) {
+				write(0, buf, fh->byte_count);
+				pos += fh->byte_count;
+		}
+
+		smb2_close(smb2, fh);
+		smb2_disconnect_share(smb2);
+		smb2_destroy_url(url);
+		smb2_destroy_context(smb2);
+
+		return 0;
 }
