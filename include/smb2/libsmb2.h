@@ -392,12 +392,12 @@ struct smb2fh {
 };
 
 /*
- * OPENDIR
+ * QUERYDIR
  */
 typedef struct _smb2dir smb2dir;
 
 /*
- * Async opendir()
+ * Async querydir()
  *
  * Returns
  *  0 : The operation was initiated. Result of the operation will be reported
@@ -412,14 +412,16 @@ typedef struct _smb2dir smb2dir;
  *          Command_data is NULL.
  */
 int smb2_querydir_async(struct smb2_context *smb2, struct smb2fh *fh,
-                        smb2_command_cb cb, void *cb_data);
+                        const char* pattern, smb2_command_cb cb, void *cb_data);
 
 /*
- * Sync opendir()
+ * Sync querydir()
  *
  * Returns NULL on failure.
  */
-smb2dir *smb2_querydir(struct smb2_context *smb2, const char *path);
+smb2dir *smb2_querydir(struct smb2_context *smb2,
+                       const char *path,
+                       const char* pattern);
 
 /*
  * closedir()

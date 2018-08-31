@@ -205,6 +205,7 @@ typedef struct _async_cb_data {
         void            *cb_data;
         uint32_t        status;
         struct smb2fh   *fh;
+        const char      *pattern;
         union {
                 query_set_data   qs_info;
                 ioctl_data       ioctl;
@@ -388,7 +389,7 @@ querydir_cb(struct smb2_context *smb2, uint32_t status,
                 req.file_id.persistent_id = dir->file_id.persistent_id;
                 req.file_id.volatile_id   = dir->file_id.volatile_id;
                 req.output_buffer_length = 0xffff;
-                req.name = "*";
+                req.name = querydir_data->pattern;
 
                 pdu = smb2_cmd_query_directory_async(smb2, &req, querydir_cb, querydir_data);
                 if (pdu == NULL) {
@@ -426,7 +427,7 @@ querydir_cb(struct smb2_context *smb2, uint32_t status,
 
 int
 smb2_querydir_async(struct smb2_context *smb2, struct smb2fh *fh,
-                    smb2_command_cb cb, void *cb_data)
+                    const char* pattern, smb2_command_cb cb, void *cb_data)
 {
         struct smb2_query_directory_request req;
         async_cb_data *querydir_data;
@@ -450,6 +451,7 @@ smb2_querydir_async(struct smb2_context *smb2, struct smb2fh *fh,
         querydir_data->cb = cb;
         querydir_data->cb_data = cb_data;
         querydir_data->acb_data_U.dir_data = dir;
+        querydir_data->pattern = pattern;
 
         dir->file_id.persistent_id = fh->file_id.persistent_id;
         dir->file_id.volatile_id   = fh->file_id.volatile_id;
@@ -460,7 +462,7 @@ smb2_querydir_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.file_id.persistent_id = dir->file_id.persistent_id;
         req.file_id.volatile_id = dir->file_id.volatile_id;
         req.output_buffer_length = 0xffff;
-        req.name = "*";
+        req.name = pattern;
 
         pdu = smb2_cmd_query_directory_async(smb2, &req, querydir_cb, querydir_data);
         if (pdu == NULL) {

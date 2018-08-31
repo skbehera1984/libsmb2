@@ -144,7 +144,9 @@ smb2_disconnect_share(struct smb2_context *smb2)
 /*
  * opendir()
  */
-smb2dir *smb2_querydir(struct smb2_context *smb2, const char *path)
+smb2dir *smb2_querydir(struct smb2_context *smb2,
+                       const char *path,
+                       const char *pattern)
 {
         struct sync_cb_data cb_data;
         struct smb2fh *fh = NULL;
@@ -166,7 +168,7 @@ smb2dir *smb2_querydir(struct smb2_context *smb2, const char *path)
                 return NULL;
         }
 
-        if (smb2_querydir_async(smb2, fh, sync_cb, &cb_data) != 0) {
+        if (smb2_querydir_async(smb2, fh, pattern, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_querydir_async failed");
                 return NULL;
         }

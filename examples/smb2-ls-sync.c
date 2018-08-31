@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 		exit(10);
 	}
 
-	dir = smb2_querydir(smb2, url->path);
+	dir = smb2_querydir(smb2, url->path, "*");
 	if (dir == NULL) {
 		printf("smb2_opendir failed. %s\n", smb2_get_error(smb2));
 		exit(10);
