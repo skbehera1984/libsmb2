@@ -770,7 +770,7 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
         if (smb2->sec == SMB2_SEC_KRB5) {
                 smb2->use_cached_creds = 1;
         }
-        smb2->version = SMB2_VERSION_ANY;
+        smb2->version = SMB2_VERSION_0202;
 
         switch (smb2->version) {
         case SMB2_VERSION_ANY:
@@ -2038,6 +2038,12 @@ uint32_t
 smb2_get_max_write_size(struct smb2_context *smb2)
 {
         return smb2->max_write_size;
+}
+
+uint32_t
+smb2_get_max_transact_size(struct smb2_context *smb2)
+{
+        return smb2->max_transact_size;
 }
 
 static void

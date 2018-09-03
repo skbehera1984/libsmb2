@@ -608,6 +608,7 @@ uint32_t smb2_fsync(struct smb2_context *smb2, struct smb2fh *fh);
  */
 uint32_t smb2_get_max_read_size(struct smb2_context *smb2);
 uint32_t smb2_get_max_write_size(struct smb2_context *smb2);
+uint32_t smb2_get_max_transact_size(struct smb2_context *smb2);
 
 /*
  * PREAD
