@@ -116,6 +116,14 @@ smb2_cmd_ioctl_async(struct smb2_context *smb2,
                 return NULL;
         }
 
+        /* Adjust credit charge for large payloads */
+        uint32_t actual_payload = MAX((req->input_count + req->output_count),
+                                      (req->max_input_response + req->max_output_response));
+        if (smb2->supports_multi_credit) {
+                pdu->header.credit_charge =
+                        (actual_payload - 1) / 65536 + 1; // 3.1.5.2 of [MS-SMB2]
+        }
+
         return pdu;
 }
 

@@ -2109,7 +2109,9 @@ smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
         req.file_id.volatile_id= fh->file_id.volatile_id;
         req.flags = ioctl_flags;
         req.max_input_response = 0;
-        req.max_output_response = 64 * 1024;
+        /* it works somehow with - 108 bytes */
+        //req.max_output_response = smb2_get_max_transact_size(smb2) - 108;
+        req.max_output_response = smb2_get_max_transact_size(smb2) - 1024;
 
         pdu = smb2_cmd_ioctl_async(smb2, &req, ioctl_cb, ioctl_d);
         if (pdu == NULL) {

@@ -1099,11 +1099,12 @@ int smb2_list_shares(struct smb2_context *smb2,
                      int *numshares
                     )
 {
-        int status = 0;
+        uint32_t status = 0;
         struct smb2fh *fh = NULL;
         uint8_t write_buf[1024] = {0};
         uint32_t write_count = 0;
         uint8_t read_buf[1024] ={0};
+        uint32_t bytes_read = 0;
         struct rpc_bind_request bind_req;
         struct context_item dcerpc_ctx;
 
@@ -1154,32 +1155,32 @@ int smb2_list_shares(struct smb2_context *smb2,
         write_count = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
         memcpy(write_buf, &bind_req, sizeof(struct rpc_bind_request));
         memcpy(write_buf+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
-        status = smb2_write(smb2, fh, write_buf, write_count);
-        if (status < 0) {
+        if (smb2_write(smb2, fh, write_buf, write_count) != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "failed to send dcerpc bind request");
                 return -1;
         }
 
         status = smb2_read(smb2, fh, read_buf, 1024);
-        if (status < 0) {
+        if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_END_OF_FILE) {
                 smb2_set_error(smb2, "dcerpc bind failed");
                 return -1;
         }
+        bytes_read = fh->byte_count;
 
-        if (dcerpc_get_response_header(read_buf, status, &rsp_hdr) < 0) {
+        if (dcerpc_get_response_header(read_buf, bytes_read, &rsp_hdr) < 0) {
                 smb2_set_error(smb2, "failed to parse dcerpc response header");
                 return -1;
         }
 
         if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
-                if (dcerpc_get_bind_nack_response(read_buf, status, &nack) < 0) {
+                if (dcerpc_get_bind_nack_response(read_buf, bytes_read, &nack) < 0) {
                         smb2_set_error(smb2, "failed to parse dcerpc BINDNACK response");
                         return -1;
                 }
                 smb2_set_error(smb2, "dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
                 return -1;
         } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
-                if (dcerpc_get_bind_ack_response(read_buf, status, &ack) < 0) {
+                if (dcerpc_get_bind_ack_response(read_buf, bytes_read, &ack) < 0) {
                         smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
                         return -1;
                 }
@@ -1244,7 +1245,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                                     SMB2_0_IOCTL_IS_FSCTL,
                                     netShareEnumBuf, offset,
                                     output_buf, &output_count);
-                if (status < 0) {
+                if (status != SMB2_STATUS_SUCCESS) {
                         smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed : %s",
                                        smb2_get_error(smb2));
                         return -1;
@@ -1279,14 +1280,15 @@ int smb2_list_shares(struct smb2_context *smb2,
                         status = smb2_read(smb2, fh,
                                            readbuf,
                                            max_recv_frag);
-                        if (status < 0) {
+                        if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_END_OF_FILE) {
                                 smb2_set_error(smb2, "failed to read remaining frags");
                                 free(readbuf); readbuf = NULL;
                                 return -1;
                         }
+                        bytes_read = fh->byte_count;
                         if (dcerpc_parse_NetrShareEnumResponse(smb2,
                                                                readbuf,
-                                                               status,
+                                                               bytes_read,
                                                                &resp2) < 0) {
                                 smb2_set_error(smb2,
                                                "dcerpc_parse_NetrShareEnumResponse-2 failed : %s",
@@ -1295,7 +1297,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                                 return -1;
                         }
                         last_frag = resp2.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
-                        frag_len = status - sizeof(struct NetrShareEnumResponse);
+                        frag_len = bytes_read - sizeof(struct NetrShareEnumResponse);
 
                         if ((output_count + frag_len) > MAX_BUF_SIZE) {
                                 smb2_set_error(smb2, "smb2_list_shares : 64K is not sufficient to hold shares data");
@@ -1349,7 +1351,7 @@ int smb2_list_shares(struct smb2_context *smb2,
         /* close the pipe  & disconnect */
         smb2_close(smb2, fh);
         smb2_disconnect_share(smb2);
-        return status;
+        return 0;
 }
 
 uint32_t
