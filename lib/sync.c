@@ -1237,7 +1237,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 if (offset > max_xmit_frag) {
                         smb2_set_error(smb2, "smb2_list_shares: IOCTL Payload size is "
                                              "larger than max_xmit_frag");
-                        return -1;
+//                        return -1; // disabled because of NetApp
                 }
 
                 status = smb2_ioctl(smb2, fh,
