@@ -114,11 +114,17 @@ struct rpc_bind_nack_response
 } __attribute__((packed));
 
 /* RPC contexts*/
-#define INTERFACE_VERSION_MAJOR	3
-#define INTERFACE_VERSION_MINOR	0
+#define SRVSVC_CONTEXT_ID	1
+#define SRVSVC_INTERFACE_VERSION_MAJOR	3
+#define SRVSVC_INTERFACE_VERSION_MINOR	0
 
 #define TRANSFER_SYNTAX_VERSION_MAJOR	2
 #define TRANSFER_SYNTAX_VERSION_MINOR	0
+
+typedef enum _contextType {
+    CONTEXT_SRVSVC = 0,
+    CONTEXT_LSARPC
+} ContextType;
 
 struct context_uuid
 {
@@ -146,12 +152,7 @@ struct context_item
 } __attribute__((packed));
 
 /* APIs */
-void dcerpc_init_context(struct   context_item* ctx,
-                         uint16_t context_id_number,
-                         uint16_t interface_version_major,
-                         uint16_t interface_version_minor,
-                         uint16_t syntax_version_major,
-                         uint16_t syntax_version_minor);
+void dcerpc_init_context(struct context_item* ctx, ContextType type);
 
 void
 dcerpc_create_bind_req(struct rpc_bind_request *bnd,
@@ -172,6 +173,47 @@ dcerpc_get_bind_nack_response(uint8_t *buf,
 
 const char *
 dcerpc_get_reject_reason(uint16_t reason);
+
+typedef enum _DceRpcOpType {
+        DCE_OP_CLOSE_POLICY = 0,
+        DCE_OP_LOOKUP_NAMES = 14,
+        DCE_OP_SHARE_ENUM   = 15,
+        DCE_OP_OPEN_POLICY2 = 44
+} DceRpcOpType;
+
+struct DceRpcOperationRequest
+{
+        struct rpc_header dceRpcHdr;
+        uint32_t alloc_hint;
+        uint16_t context_id;
+        uint16_t opnum;
+} __attribute__((packed));
+
+struct DceRpcOperationResponse
+{
+        struct rpc_header dceRpcHdr;
+        /* in the response alloc_hint can be more than
+           frag_length, and we receive only one frag data and the
+           flag LAST_FRAG is not set.
+         */
+        uint32_t alloc_hint;
+        uint16_t context_id;
+        uint8_t cancel_count;
+        uint8_t padding;
+} __attribute__((packed));
+
+int
+dcerpc_create_Operation_Request(struct smb2_context *smb2,
+                                struct DceRpcOperationRequest *dceOpReq,
+                                uint16_t opnum,
+                                uint32_t payload_size);
+int
+dcerpc_parse_Operation_Response(struct smb2_context *smb2,
+                                const uint8_t *buffer,
+                                const uint32_t buf_len,
+                                struct DceRpcOperationResponse *dceOpRes,
+                                uint32_t *status);
+
 
 /************************ SRVSVC ************************/
 struct stringValue
@@ -218,44 +260,13 @@ struct InfoStruct
         uint32_t array_referent_id;
 } __attribute__((packed));
 
-struct NetrShareEnumRequest
-{
-        struct rpc_header dceRpcHdr;
-        uint32_t alloc_hint;
-        uint16_t context_id;
-        uint16_t opnum;
-} __attribute__((packed));
-
-struct NetrShareEnumResponse
-{
-        struct rpc_header dceRpcHdr;
-        /* in the response alloc_hint can be more than
-           frag_length, and we receive only one frag data and the
-           flag LAST_FRAG is not set.
-         */
-        uint32_t alloc_hint;
-        uint16_t context_id;
-        uint8_t cancel_count;
-        uint8_t padding;
-} __attribute__((packed));
-
 int
-dcerpc_create_NetrShareEnumRequest(struct smb2_context *smb2,
-                                   struct NetrShareEnumRequest *netr_req,
-                                   uint32_t payload_size);
-int
-dcerpc_parse_NetrShareEnumResponse(struct smb2_context *smb2,
-                                   const uint8_t *buffer,
-                                   const uint32_t buf_len,
-                                   struct NetrShareEnumResponse *netr_rep);
-
-int
-dcerpc_create_NetrShareEnumRequest_payload(struct smb2_context *smb2,
-                                           char      *server_name,
-                                           uint32_t   shinfo_type,
-                                           uint64_t  resumeHandle,
-                                           uint8_t   *buffer,
-                                           uint32_t  *buffer_len);
+srvsvc_create_NetrShareEnumRequest(struct smb2_context *smb2,
+                                   char      *server_name,
+                                   uint32_t   shinfo_type,
+                                   uint64_t  resumeHandle,
+                                   uint8_t   *buffer,
+                                   uint32_t  *buffer_len);
 
 uint32_t
 srvsvc_get_NetrShareEnum_status(struct smb2_context *smb2,
@@ -263,7 +274,7 @@ srvsvc_get_NetrShareEnum_status(struct smb2_context *smb2,
                                 const uint32_t buf_len);
 
 int
-srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
+srvsvc_parse_NetrShareEnumResponse(struct smb2_context *smb2,
                                    const uint8_t *buffer,
                                    const uint32_t buf_len,
                                    uint32_t *num_entries,
@@ -271,6 +282,86 @@ srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
                                    uint32_t *resumeHandlePtr,
                                    uint32_t *resumeHandle,
                                    struct smb2_shareinfo **shares);
+
+/************************ LSARPC ************************/
+#define LSARPC_CONTEXT_ID	0
+#define LSARPC_INTERFACE_VERSION_MAJOR	0
+#define LSARPC_INTERFACE_VERSION_MINOR	0
+
+typedef struct _ObjectAttributes {
+        uint32_t m_length;
+        uint32_t m_lsPtr;
+        uint32_t m_namePtr;
+        uint32_t m_attributes;
+        uint32_t m_securityDescriptorPtr;
+        uint32_t m_qualityOfServicePtr;
+} __attribute__((packed)) ObjectAttributes;
+
+typedef struct _PolicyHandle {
+        uint32_t ContextType;
+        union uuid ContextUuid;
+} __attribute__((packed)) PolicyHandle;
+
+/* Policy rights */
+#define RIGHT_TO_LOOKUP_NAMES	0x00000800
+
+/* used for LookUpNames Req */
+typedef struct _Names {
+    uint32_t   MaxCount;
+    // padding if required
+    uint16_t   Length; //ucs length
+    uint16_t   MaximumLength; //same as Length
+    uint32_t   ReferentId;
+    // StringDef of name
+} Names;
+
+typedef struct _TranslatedSids {
+    uint32_t    Entries;
+    uint32_t    SidsPtr;
+} TranslatedSids;
+
+int
+lsarpc_create_OpenPolicy2Req(struct smb2_context *smb2,
+                             const char *server_name,
+                             uint32_t    access_mask,
+                             uint8_t    *buffer,
+                             uint32_t    buffer_len,
+                             uint32_t   *used);
+
+int
+lsarpc_parse_OpenPolicy2Res(struct smb2_context *smb2,
+                            uint8_t *buffer,
+                            uint32_t bufLen,
+                            PolicyHandle *handle,
+                            uint32_t *status);
+
+int
+lsarpc_create_ClosePolicy2eq(struct smb2_context *smb2,
+                             PolicyHandle *handle,
+                             uint8_t    *buffer,
+                             uint32_t    buffer_len,
+                             uint32_t   *used);
+
+int
+lsarpc_create_LookUpNamesReq(struct smb2_context *smb2,
+                             PolicyHandle *handle,
+                             const char   *user,
+                             const char   *domain,
+                             uint8_t      *buffer,
+                             uint32_t      buffer_len,
+                             uint32_t     *used);
+
+uint32_t
+lsarpc_get_LookupNames_status(struct smb2_context *smb2,
+                            uint8_t             *buffer,
+                            uint32_t             buffer_len);
+
+int
+lsarpc_parse_LookupNamesRes(struct smb2_context *smb2,
+                            uint8_t             *buffer,
+                            uint32_t             buffer_len,
+                            uint8_t            **sid,
+                            uint32_t            *status);
 
 #ifdef __cplusplus
 }

@@ -1256,6 +1256,16 @@ struct srvsvc_netshareenumall_rep {
 int smb2_share_enum_async(struct smb2_context *smb2, const char *server,
                           smb2_command_cb cb, void *cb_data);
 
+/* Get SID of user -
+ * SID returned is in the form of a buffer and must be type casted to struct smb2_sid
+ * -- The user is responsible to freeup the sid buffer
+ */
+int smb2_lookUpSid(struct smb2_context *smb2,
+                   const char *user,
+                   const char *domain,
+                   const char *server,
+                   uint8_t   **sid);
+
 #ifdef __cplusplus
 }
 #endif

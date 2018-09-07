@@ -105,3 +105,4 @@ smb2_free_file_extended_info
 smb2_getinfo_stream
 smb2_fgetinfo_stream
 smb2_free_file_stream_info
+smb2_lookUpSid

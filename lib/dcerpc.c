@@ -6,12 +6,19 @@
 #include "libsmb2-private.h"
 #include <slist.h>
 
+#include <stdio.h>
+
 static uint64_t global_call_id = 1;
 
 #define SRVSVC_UUID_A	0x4b324fc8
 #define SRVSVC_UUID_B	0x1670
 #define SRVSVC_UUID_C	0x01d3
 static const uint8_t SRVSVC_UUID_D[] = { 0x12, 0x78, 0x5a, 0x47, 0xbf, 0x6e, 0xe1, 0x88 };
+
+#define	LSARPC_UUID_A	0x12345778
+#define	LSARPC_UUID_B	0x1234
+#define	LSARPC_UUID_C	0xabcd
+static const uint8_t LSARPC_UUID_D[] = {0xef, 0x00, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab};
 
 #define TRANSFER_SYNTAX_NDR_UUID_A	0x8a885d04
 #define TRANSFER_SYNTAX_NDR_UUID_B	0x1ceb
@@ -82,18 +89,16 @@ init_rpc_bind_request(struct rpc_bind_request *bnd)
 		memset(bnd->padding, 0, sizeof(bnd->padding));
 }
 
-void dcerpc_init_context(struct   context_item* ctx,
-                         uint16_t context_id_number,
-                         uint16_t interface_version_major,
-                         uint16_t interface_version_minor,
-                         uint16_t syntax_version_major,
-                         uint16_t syntax_version_minor)
+void dcerpc_init_context(struct context_item* ctx, ContextType type)
 {
-        union uuid srvsvc_id;
-        union uuid syntax_id;
+    union uuid syntax_id;
 
-        ctx->context_id = htole16(context_id_number);
-        ctx->num_trans_items = htole16(1);
+    ctx->num_trans_items = htole16(1);
+
+    if (type == CONTEXT_SRVSVC) {
+        union uuid srvsvc_id;
+
+        ctx->context_id = htole16(SRVSVC_CONTEXT_ID);
 
         set_context_uuid(&srvsvc_id.s_id,
                          SRVSVC_UUID_A,
@@ -101,17 +106,33 @@ void dcerpc_init_context(struct   context_item* ctx,
                          SRVSVC_UUID_C,
                          SRVSVC_UUID_D);
         memcpy(&(ctx->interface_uuid), &(srvsvc_id.id), 16);
-        ctx->interface_version_major = htole16(interface_version_major);
-        ctx->interface_version_minor = htole16(interface_version_minor);
+        ctx->interface_version_major = htole16(SRVSVC_INTERFACE_VERSION_MAJOR);
+        ctx->interface_version_minor = htole16(SRVSVC_INTERFACE_VERSION_MINOR);
 
-        set_context_uuid(&syntax_id.s_id,
-                         TRANSFER_SYNTAX_NDR_UUID_A,
-                         TRANSFER_SYNTAX_NDR_UUID_B,
-                         TRANSFER_SYNTAX_NDR_UUID_C,
-                         TRANSFER_SYNTAX_NDR_UUID_D);
-        memcpy(&(ctx->transfer_syntax), &(syntax_id.id), 16);
-        ctx->syntax_version_major = htole16(syntax_version_major);
-        ctx->syntax_version_minor = htole16(syntax_version_minor);
+    } else if (type == CONTEXT_LSARPC) {
+        union uuid lsarpc_id;
+
+        ctx->context_id = htole16(LSARPC_CONTEXT_ID);
+
+        set_context_uuid(&lsarpc_id.s_id,
+                         LSARPC_UUID_A,
+                         LSARPC_UUID_B,
+                         LSARPC_UUID_C,
+                         LSARPC_UUID_D);
+        memcpy(&(ctx->interface_uuid), &(lsarpc_id.id), 16);
+        ctx->interface_version_major = htole16(LSARPC_INTERFACE_VERSION_MAJOR);
+        ctx->interface_version_minor = htole16(LSARPC_INTERFACE_VERSION_MINOR);
+
+    }
+
+    set_context_uuid(&syntax_id.s_id,
+                     TRANSFER_SYNTAX_NDR_UUID_A,
+                     TRANSFER_SYNTAX_NDR_UUID_B,
+                     TRANSFER_SYNTAX_NDR_UUID_C,
+                     TRANSFER_SYNTAX_NDR_UUID_D);
+    memcpy(&(ctx->transfer_syntax), &(syntax_id.id), 16);
+    ctx->syntax_version_major = htole16(TRANSFER_SYNTAX_VERSION_MAJOR);
+    ctx->syntax_version_minor = htole16(TRANSFER_SYNTAX_VERSION_MINOR);
 }
 
 void dcerpc_create_bind_req(struct rpc_bind_request *bnd, int num_context_items)
@@ -169,6 +190,80 @@ dcerpc_get_bind_nack_response(uint8_t *buf,
         return 0;
 }
 
+static void
+dcerpc_init_Operation_Request(struct DceRpcOperationRequest *dceOpReq,
+                              uint16_t opnum)
+{
+    init_rpc_header(&(dceOpReq->dceRpcHdr));
+    dceOpReq->alloc_hint = 0;
+    if (opnum == DCE_OP_SHARE_ENUM) {
+        dceOpReq->context_id = 1;
+    } else if (opnum == DCE_OP_CLOSE_POLICY) {
+        dceOpReq->context_id = 0;
+    } else {
+        dceOpReq->context_id = 0;
+    }
+    dceOpReq->opnum = htole16(opnum);
+}
+
+int
+dcerpc_create_Operation_Request(struct smb2_context *smb2,
+                                struct DceRpcOperationRequest *dceOpReq,
+                                uint16_t opnum,
+                                uint32_t payload_size)
+{
+    dcerpc_init_Operation_Request(dceOpReq, opnum);
+    dceOpReq->dceRpcHdr.packet_type  = RPC_PACKET_TYPE_REQUEST;
+    dceOpReq->dceRpcHdr.packet_flags = RPC_FLAG_FIRST_FRAG | RPC_FLAG_LAST_FRAG;
+    dceOpReq->dceRpcHdr.frag_length  =  sizeof(struct DceRpcOperationRequest) + payload_size;
+    dceOpReq->dceRpcHdr.call_id      =  global_call_id++;
+    dceOpReq->alloc_hint             =  payload_size;/* some add 2 more bytes ?*/
+    return 0;
+}
+
+int
+dcerpc_parse_Operation_Response(struct smb2_context *smb2,
+                                const uint8_t *buffer,
+                                const uint32_t buf_len,
+                                struct DceRpcOperationResponse *dceOpRes,
+                                uint32_t *status)
+{
+    struct DceRpcOperationResponse *inrep = NULL;
+
+    if (buf_len < sizeof(struct DceRpcOperationResponse)) {
+        smb2_set_error(smb2, "response to small for DceRpcOperationResponse");
+        return -1;
+    }
+
+    inrep = (struct DceRpcOperationResponse *)buffer;
+
+    dceOpRes->alloc_hint   = le32toh(inrep->alloc_hint);
+    dceOpRes->context_id   = le16toh(inrep->context_id);
+    dceOpRes->cancel_count = inrep->cancel_count;
+    dceOpRes->padding      = inrep->padding;
+
+    dceOpRes->dceRpcHdr.version_major = inrep->dceRpcHdr.version_major;
+    dceOpRes->dceRpcHdr.version_minor = inrep->dceRpcHdr.version_minor;
+    dceOpRes->dceRpcHdr.packet_type   = inrep->dceRpcHdr.packet_type;
+    dceOpRes->dceRpcHdr.packet_flags  = inrep->dceRpcHdr.packet_flags;
+    dceOpRes->dceRpcHdr.frag_length   = le16toh(inrep->dceRpcHdr.frag_length);
+    dceOpRes->dceRpcHdr.auth_length   = le16toh(inrep->dceRpcHdr.auth_length);
+    dceOpRes->dceRpcHdr.call_id       = le32toh(inrep->dceRpcHdr.call_id);
+
+    dceOpRes->dceRpcHdr.data_rep      = inrep->dceRpcHdr.data_rep;
+
+    if ((buf_len - sizeof(struct DceRpcOperationResponse)) <= 8) {
+        /* the OP failed */
+        uint32_t *stsptr = (uint32_t*)(buffer+sizeof(struct DceRpcOperationResponse));
+        if (status) {
+            *status = le32toh(*stsptr);
+        }
+        return -1;
+    }
+
+    return 0;
+}
+
 const char *
 dcerpc_get_reject_reason(uint16_t reason)
 {
@@ -200,75 +295,27 @@ dcerpc_get_reject_reason(uint16_t reason)
 }
 
 /******************************** SRVSVC ********************************/
-static void
-dcerpc_init_NetrShareEnumRequest(struct NetrShareEnumRequest *netr_req)
-{
-        init_rpc_header(&(netr_req->dceRpcHdr));
-        netr_req->alloc_hint = 0;
-        netr_req->context_id = 1;
-        /* OPNUM - 15 must be translated */
-        netr_req->opnum = htole16(15);
-}
-
-int
-dcerpc_create_NetrShareEnumRequest(struct smb2_context *smb2,
-                                   struct NetrShareEnumRequest *netr_req,
-                                   uint32_t payload_size)
-{
-        dcerpc_init_NetrShareEnumRequest(netr_req);
-        netr_req->dceRpcHdr.packet_type  = RPC_PACKET_TYPE_REQUEST;
-        netr_req->dceRpcHdr.packet_flags = RPC_FLAG_FIRST_FRAG | RPC_FLAG_LAST_FRAG;
-        netr_req->dceRpcHdr.frag_length  =  sizeof(struct NetrShareEnumRequest) + payload_size;
-        netr_req->dceRpcHdr.call_id      =  global_call_id++;
-        netr_req->alloc_hint             =  payload_size;/* some add 2 more bytes ?*/
-        return 0;
-}
-
-int
-dcerpc_parse_NetrShareEnumResponse(struct smb2_context *smb2,
-                                   const uint8_t *buffer,
-                                   const uint32_t buf_len,
-                                   struct NetrShareEnumResponse *netr_rep)
-{
-        struct NetrShareEnumResponse *inrep = NULL;
-
-        if (buf_len < sizeof(struct NetrShareEnumResponse)) {
-                smb2_set_error(smb2, "response to small for NetrShareEnumResponse");
-                return -1;
-        }
-
-        inrep = (struct NetrShareEnumResponse *)buffer;
-
-        netr_rep->alloc_hint   = le32toh(inrep->alloc_hint);
-        netr_rep->context_id   = le16toh(inrep->context_id);
-        netr_rep->cancel_count = inrep->cancel_count;
-        netr_rep->padding      = inrep->padding;
-
-        netr_rep->dceRpcHdr.version_major = inrep->dceRpcHdr.version_major;
-        netr_rep->dceRpcHdr.version_minor = inrep->dceRpcHdr.version_minor;
-        netr_rep->dceRpcHdr.packet_type   = inrep->dceRpcHdr.packet_type;
-        netr_rep->dceRpcHdr.packet_flags  = inrep->dceRpcHdr.packet_flags;
-        netr_rep->dceRpcHdr.frag_length   = le16toh(inrep->dceRpcHdr.frag_length);
-        netr_rep->dceRpcHdr.auth_length   = le16toh(inrep->dceRpcHdr.auth_length);
-        netr_rep->dceRpcHdr.call_id       = le32toh(inrep->dceRpcHdr.call_id);
-
-        netr_rep->dceRpcHdr.data_rep      = inrep->dceRpcHdr.data_rep;
-
-        return 0;
-}
-
 static int
 dcerpc_init_stringValue(struct smb2_context *smb2,
-                        char     *string,
-                        uint8_t  *buf,
-                        uint32_t buf_len,
-                        uint32_t *buf_used)
+                        const char     *string,
+                        int             bTerminateNull,
+                        uint8_t        *buf,
+                        uint32_t        buf_len,
+                        uint32_t       *buf_used)
 {
         struct ucs2 *name = NULL;
         struct   stringValue *stringVal = NULL;
         uint32_t size_required = 0;
         uint32_t offset = 0;
-        uint32_t len = strlen(string)+1;
+        uint32_t len = 0;
+
+        if (bTerminateNull) {
+                /* For NetrShareEnum we need the terminating null */
+                len = strlen(string)+1;
+        } else {
+                /* For LsaLookupNames we don't need the terminating null */
+                len = strlen(string);
+        }
 
         size_required = sizeof(struct stringValue) + len*2;
 
@@ -303,11 +350,11 @@ dcerpc_init_stringValue(struct smb2_context *smb2,
 
 static int
 dcerpc_init_serverName(struct smb2_context *smb2,
-                       uint32_t refid,
-                       char     *name,
-                       uint8_t  *buf,
-                       uint32_t  buf_len,
-                       uint32_t *buf_used)
+                       uint32_t        refid,
+                       const char     *name,
+                       uint8_t        *buf,
+                       uint32_t        buf_len,
+                       uint32_t       *buf_used)
 {
         struct serverName *srv = NULL;
         uint32_t offset = 0;
@@ -318,8 +365,9 @@ dcerpc_init_serverName(struct smb2_context *smb2,
         srv->referent_id = htole32(refid);
         offset += sizeof(uint32_t);
 
-        if (dcerpc_init_stringValue(smb2, name, buf+offset,
-                                    buf_len - offset, &size_name) < 0) {
+        if (dcerpc_init_stringValue(smb2, name, 1,
+                                    buf+offset, buf_len - offset,
+                                    &size_name) < 0) {
                 return -1;
         }
         offset += size_name;
@@ -330,7 +378,7 @@ dcerpc_init_serverName(struct smb2_context *smb2,
 }
 
 static int
-dcerpc_init_InfoStruct(struct smb2_context *smb2,
+srvsvc_init_InfoStruct(struct smb2_context *smb2,
                        uint32_t infolevel, uint32_t id,
                        uint32_t entries, uint32_t arrayId,
                        uint8_t *buffer, uint32_t buf_len)
@@ -348,12 +396,12 @@ dcerpc_init_InfoStruct(struct smb2_context *smb2,
 }
 
 int
-dcerpc_create_NetrShareEnumRequest_payload(struct smb2_context *smb2,
-                                           char       *server_name,
-                                           uint32_t   shinfo_type,
-                                           uint64_t   resumeHandle,
-                                           uint8_t    *buffer,
-                                           uint32_t   *buffer_len)
+srvsvc_create_NetrShareEnumRequest(struct smb2_context *smb2,
+                                   char       *server_name,
+                                   uint32_t   shinfo_type,
+                                   uint64_t   resumeHandle,
+                                   uint8_t    *buffer,
+                                   uint32_t   *buffer_len)
 {
         uint32_t  buf_len = 0;
         uint32_t  offset = 0;
@@ -378,7 +426,7 @@ dcerpc_create_NetrShareEnumRequest_payload(struct smb2_context *smb2,
                 offset += padlen;
         }
 
-        if (dcerpc_init_InfoStruct(smb2, shinfo_type, 0x01fbf3e8, 0, 0,
+        if (srvsvc_init_InfoStruct(smb2, shinfo_type, 0x01fbf3e8, 0, 0,
                                    buffer+offset, buf_len - offset) <0) {
                  return -1;
         }
@@ -715,7 +763,7 @@ srvsvc_parse_NetrShareEnum_buffer2(struct smb2_context *smb2,
 }
 
 int
-srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
+srvsvc_parse_NetrShareEnumResponse(struct smb2_context *smb2,
                                    const uint8_t *buffer,
                                    const uint32_t buf_len,
                                    uint32_t *num_entries,
@@ -768,4 +816,347 @@ srvsvc_parse_NetrShareEnum_payload(struct smb2_context *smb2,
         }
 
         return 0;
+}
+
+/******************************** LSARPC ********************************/
+
+/* An openPolicy/OpenPolicy2 has the following
+   - servername in unicode
+   - padding if required
+   - ObjectAttributes filled with 0's
+   - access mask
+ */
+int
+lsarpc_create_OpenPolicy2Req(struct smb2_context *smb2,
+                             const char *server_name,
+                             uint32_t    access_mask,
+                             uint8_t    *buffer,
+                             uint32_t    buffer_len,
+                             uint32_t   *used)
+{
+    uint32_t  buf_len = 0;
+    uint32_t  offset = 0;
+    uint32_t  size_used = 0;
+    uint32_t  *accessright = NULL;
+
+    buf_len = buffer_len;
+
+    if (dcerpc_init_serverName(smb2, 0x01414938, server_name,
+                               buffer, buf_len, &size_used) < 0) {
+        return -1;
+    }
+
+    offset += size_used;
+
+    /* No padding required after this for lsaOpenPolicy2 opnum 44,
+     * but padding will be required for lsaOpenPolicy opnum 6
+     */
+
+    /* ObjectAttributes is not used so set them to 0, only set the len to 24 i.e
+     * size of ObjectAttributes
+     */
+    ObjectAttributes *attr = (ObjectAttributes *) (buffer + offset);
+    memset(attr, 0, sizeof(ObjectAttributes));
+    attr->m_length = htole32(24);
+    offset += sizeof(ObjectAttributes);
+
+    accessright = (uint32_t*) (buffer + offset);
+    *accessright = htole32(access_mask);
+    offset += sizeof(uint32_t);
+
+    *used = offset;
+
+    return 0;
+}
+
+int
+lsarpc_parse_OpenPolicy2Res(struct smb2_context *smb2,
+                            uint8_t *buffer,
+                            uint32_t bufLen,
+                            PolicyHandle *handle,
+                            uint32_t *status)
+{
+    uint32_t *stsptr = NULL;
+    PolicyHandle *inhandle = NULL;
+
+    stsptr = (uint32_t*)(buffer+(bufLen-4));
+    *status = le32toh(*stsptr);
+    if(*status) {
+        return -1;
+    }
+
+    inhandle = (PolicyHandle *)buffer;
+    handle->ContextType = le32toh(inhandle->ContextType);
+    handle->ContextUuid.s_id.a = le32toh(inhandle->ContextUuid.s_id.a);
+    handle->ContextUuid.s_id.b = le16toh(inhandle->ContextUuid.s_id.b);
+    handle->ContextUuid.s_id.c = le16toh(inhandle->ContextUuid.s_id.c);
+    memcpy(handle->ContextUuid.s_id.d, inhandle->ContextUuid.s_id.d, 8);
+
+    return 0;
+}
+
+
+int
+lsarpc_create_ClosePolicy2eq(struct smb2_context *smb2,
+                             PolicyHandle *handle,
+                             uint8_t    *buffer,
+                             uint32_t    buffer_len,
+                             uint32_t   *used)
+{
+    PolicyHandle *outHandle = (PolicyHandle*)buffer;
+    union uuid policyHandle;
+
+    if (buffer_len < sizeof(PolicyHandle)) {
+        return -1;
+    }
+
+    set_context_uuid(&policyHandle.s_id,
+                     handle->ContextUuid.s_id.a,
+                     handle->ContextUuid.s_id.b,
+                     handle->ContextUuid.s_id.c,
+                     handle->ContextUuid.s_id.d);
+
+    outHandle->ContextType = htole32(handle->ContextType);
+    memcpy(outHandle->ContextUuid.id, policyHandle.id, 16);
+    *used = sizeof(PolicyHandle);
+
+    return 0;
+}
+
+/*
+NTSTATUS LsarLookupNames(
+   [in] LSAPR_HANDLE PolicyHandle,
+   [in, range(0,1000)] unsigned long Count,
+   [in, size_is(Count)] PRPC_UNICODE_STRING Names,
+   [out] PLSAPR_REFERENCED_DOMAIN_LIST* ReferencedDomains,
+   [in, out] PLSAPR_TRANSLATED_SIDS TranslatedSids,
+   [in] LSAP_LOOKUP_LEVEL LookupLevel,
+   [in, out] unsigned long* MappedCount
+ );
+*/
+
+int
+lsarpc_create_LookUpNamesReq(struct smb2_context *smb2,
+                             PolicyHandle *handle,
+                             const char   *user,
+                             const char   *domain,
+                             uint8_t      *buffer,
+                             uint32_t      buffer_len,
+                             uint32_t     *used)
+{
+    PolicyHandle *outHandle = (PolicyHandle*)buffer;
+    union uuid policyHandle;
+    char name[1024] = {0};
+    uint32_t nameLen = 0;
+    uint32_t offset = 0;
+    uint32_t *pUint32 = NULL;
+    uint16_t *pUint16 = NULL;
+
+    /* must provide the name as domain\user */
+    sprintf(name, "%s\\%s", domain, user);
+
+    set_context_uuid(&policyHandle.s_id,
+                     handle->ContextUuid.s_id.a,
+                     handle->ContextUuid.s_id.b,
+                     handle->ContextUuid.s_id.c,
+                     handle->ContextUuid.s_id.d);
+
+    outHandle->ContextType = htole32(handle->ContextType);
+    memcpy(outHandle->ContextUuid.id, policyHandle.id, 16);
+    offset += sizeof(PolicyHandle);
+
+    pUint32  = (uint32_t*) (buffer+offset);
+    *pUint32 = htole32(1); /* set the size/count of names */
+    offset  += sizeof(uint32_t);
+
+    /* Now set the Names Array */
+    pUint32  = (uint32_t*) (buffer+offset);
+    *pUint32 = htole32(1); /* set the MaxCount of names */
+    offset  += sizeof(uint32_t);
+
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    pUint16  = (uint16_t*) (buffer+offset);
+    *pUint16 = htole16(strlen(name)*2); /* set the Length of name */
+    offset  += sizeof(uint16_t);
+
+    pUint16  = (uint16_t*) (buffer+offset);
+    *pUint16 = htole16(strlen(name)*2); /* set the MaximumLength of name */
+    offset  += sizeof(uint16_t);
+
+    pUint32  = (uint32_t*) (buffer+offset);
+    *pUint32 = htole32(0x0141afb8); /* set the BufferPtr */
+    offset  += sizeof(uint32_t);
+
+    if (dcerpc_init_stringValue(smb2, name, 0, buffer+offset,
+                                buffer_len - offset, &nameLen) < 0) {
+        return -1;
+    }
+    offset += nameLen;
+
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    pUint32  = (uint32_t*) (buffer+offset);
+    *pUint32 = htole32(0); /* set the Entries of TranslatedSids */
+    offset  += sizeof(uint32_t);
+
+    pUint32  = (uint32_t*) (buffer+offset);
+    *pUint32 = htole32(0); /* set the SidsPtr of TranslatedSids */
+    offset  += sizeof(uint32_t);
+
+    pUint16  = (uint16_t*) (buffer+offset);
+    *pUint16 = htole16(1); /* set the LookupLevel */
+    offset  += sizeof(uint16_t);
+
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    pUint32  = (uint32_t*) (buffer+offset);
+    *pUint32 = htole32(0); /* set the MappedCount */
+    offset  += sizeof(uint32_t);
+
+    *used = offset;
+    return 0;
+}
+
+uint32_t
+lsarpc_get_LookupNames_status(struct smb2_context *smb2,
+                            uint8_t             *buffer,
+                            uint32_t             bufLen)
+{
+    uint32_t *stsptr = NULL;
+    uint32_t status = 0;
+
+    stsptr = (uint32_t*)(buffer+(bufLen-4));
+    status = le32toh(*stsptr);
+
+    return status;
+}
+
+int
+lsarpc_parse_LookupNamesRes(struct smb2_context *smb2,
+                            uint8_t             *buffer,
+                            uint32_t             bufLen,
+                            uint8_t            **sid,
+                            uint32_t            *status)
+{
+    uint8_t  *sidbuf = NULL;
+    struct smb2_sid *mysid = NULL;
+    uint32_t *stsptr = NULL;
+    uint32_t offset = 0;
+    uint32_t numEntries = 0, MaxEntries = 0, MaxCount = 0;
+    uint32_t Length = 0, MaxLength = 0;
+    uint32_t maxSubAuthCount = 0;
+    uint8_t  revision = 0, sub_auth_count = 0;
+    uint32_t *pUint32 = NULL;
+    uint16_t *pUint16 = NULL;
+
+    stsptr = (uint32_t*)(buffer+(bufLen-4));
+    *status = le32toh(*stsptr);
+    if(*status) {
+        return -1;
+    }
+
+    offset += 4; // skip the ReferentID
+
+    pUint32 = (uint32_t*) (buffer+offset);
+    numEntries = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    offset += 4; // skip the ReferentID again
+
+    pUint32 = (uint32_t*) (buffer+offset);
+    MaxEntries = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    pUint32 = (uint32_t*) (buffer+offset);
+    MaxCount = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    pUint16 = (uint16_t*) (buffer+offset);
+    Length = le16toh(*pUint16);
+    offset += sizeof(uint16_t);
+
+    pUint16 = (uint16_t*) (buffer+offset);
+    MaxLength = le16toh(*pUint16);
+    offset += sizeof(uint16_t);
+
+    offset += 4; // skip BufferPtr
+    offset += 4; // skip SidPtr
+
+    /* may be this block needs to be looped for num of elements MaxCount */
+    {
+        struct stringValue domainName, *namePtr = NULL;
+        //char *domName = NULL;
+
+        namePtr = (struct stringValue *) (buffer+offset);
+        domainName.max_length = le32toh(namePtr->max_length);
+        domainName.offset     = le32toh(namePtr->offset);
+        domainName.length     = le32toh(namePtr->length);
+        offset += sizeof(struct stringValue);
+        //domName = ucs2_to_utf8((uint16_t *)(buffer+offset), domainName.length);
+        offset += (2 * domainName.length);
+    }
+
+    /* Now get the SID */
+    pUint32 = (uint32_t*) (buffer+offset);
+    maxSubAuthCount = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    revision = *(uint8_t*)(buffer+offset);
+    offset += 1;
+    sub_auth_count = *(uint8_t*)(buffer+offset);
+    offset += 1;
+
+    if (maxSubAuthCount != sub_auth_count) {
+        smb2_set_error(smb2, "%s: Mismatch of sub-auth counts", __func__);
+        return -1;
+    }
+
+    sidbuf = (uint8_t*)malloc(8+ (sub_auth_count*sizeof(uint32_t)));
+    if (sidbuf == NULL) {
+        smb2_set_error(smb2, "%s: failed to allocate memory for sid", __func__);
+        return -1;
+    }
+
+    mysid = (struct smb2_sid*)sidbuf;
+    mysid->revision = revision;
+    mysid->sub_auth_count = sub_auth_count;
+    memcpy(mysid->id_auth, buffer+offset, SID_ID_AUTH_LEN);
+    offset += SID_ID_AUTH_LEN;
+
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    /* copy the sub-authorities */
+    int i = 0; uint32_t localOffset = offset;
+    uint32_t *subAuth  = (uint32_t*)(sidbuf+8);
+    for (; i< sub_auth_count; i++) {
+        pUint32 = (uint32_t*) (buffer+localOffset);
+        subAuth[i] = le32toh(*pUint32);
+        localOffset += sizeof(uint32_t);
+    }
+    offset += sub_auth_count*sizeof(uint32_t);
+
+    /* to avoid build failure */
+    numEntries = numEntries; MaxEntries = MaxEntries; MaxCount = MaxCount;
+    Length = Length; MaxLength = MaxLength;
+
+    *sid = sidbuf;
+    return 0;
 }
