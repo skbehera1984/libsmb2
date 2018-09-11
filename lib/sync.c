@@ -1355,6 +1355,111 @@ int smb2_list_shares(struct smb2_context *smb2,
 }
 
 uint32_t
+smb2_getinfo_basic(struct smb2_context *smb2,
+                      const char *path,
+                      struct smb2_file_basic_info *basic_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+
+        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
+                smb2_get_error(smb2));
+                return SMB2_STATUS_PAYLOAD_FAILED;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return SMB2_STATUS_SOCKET_ERROR;
+        }
+
+        *basic_info = info.u_info.basic_info;
+
+        return cb_data.status;
+}
+
+uint32_t
+smb2_fgetinfo_basic(struct smb2_context *smb2,
+                       struct smb2fh *fh,
+                       struct smb2_file_basic_info *basic_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
+
+        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
+                smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        *basic_info = info.u_info.basic_info;
+        return cb_data.status;
+}
+
+uint32_t
+smb2_getinfo_standard(struct smb2_context *smb2,
+                      const char *path,
+                      struct smb2_file_standard_info *standard_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
+
+        if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
+                smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        *standard_info = info.u_info.standard_info;
+        return cb_data.status;
+}
+
+uint32_t
+smb2_fgetinfo_standard(struct smb2_context *smb2,
+                       struct smb2fh *fh,
+                       struct smb2_file_standard_info *standard_info)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+        smb2_file_info info;
+
+        info.info_type = SMB2_0_INFO_FILE;
+        info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
+
+        if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
+                smb2_get_error(smb2));
+                return -1;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return -1;
+        }
+
+        *standard_info = info.u_info.standard_info;
+        return cb_data.status;
+}
+
+uint32_t
 smb2_getinfo_extended(struct smb2_context *smb2,
                       const char *path,
                       struct smb2_file_extended_info **extended_info)

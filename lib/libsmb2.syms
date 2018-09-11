@@ -93,6 +93,10 @@ smb2_getinfo_all
 smb2_fgetinfo_all
 smb2_getinfo_async
 smb2_setinfo_async
+smb2_getinfo_basic
+smb2_fgetinfo_basic
+smb2_getinfo_standard
+smb2_fgetinfo_standard
 smb2_getinfo_extended
 smb2_fgetinfo_extended
 smb2_setinfo_extended

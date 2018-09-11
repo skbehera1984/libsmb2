@@ -1108,6 +1108,38 @@ smb2_list_shares(struct smb2_context *smb2,
                  struct smb2_shareinfo **shares,
                  int *numshares);
 
+/* Sync smb2_getinfo_basic()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ *@@:API user must call smb2_free_file_basic_info()
+ */
+uint32_t
+smb2_getinfo_basic(struct smb2_context *smb2,
+                      const char *path,
+                      struct smb2_file_basic_info *basic_info);
+
+uint32_t
+smb2_fgetinfo_basic(struct smb2_context *smb2,
+                       struct smb2fh *fh,
+                       struct smb2_file_basic_info *basic_info);
+
+/* Sync smb2_getinfo_standard()
+ * Function returns
+ *      0 : Success
+ * -errno : An error occured.
+ *@@:API user must call smb2_free_file_standard_info()
+ */
+uint32_t
+smb2_getinfo_standard(struct smb2_context *smb2,
+                      const char *path,
+                      struct smb2_file_standard_info *standard_info);
+
+uint32_t
+smb2_fgetinfo_standard(struct smb2_context *smb2,
+                       struct smb2fh *fh,
+                       struct smb2_file_standard_info *standard_info);
+
 /* Sync smb2_getinfo_extended()
  * Function returns
  *      0 : Success
