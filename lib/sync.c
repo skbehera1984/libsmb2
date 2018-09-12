@@ -1155,17 +1155,17 @@ int smb2_list_shares(struct smb2_context *smb2,
         write_count = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
         memcpy(write_buf, &bind_req, sizeof(struct rpc_bind_request));
         memcpy(write_buf+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
-        if (smb2_write(smb2, fh, write_buf, write_count) != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "failed to send dcerpc bind request");
-                return -1;
-        }
 
-        status = smb2_read(smb2, fh, read_buf, 1024);
-        if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_END_OF_FILE) {
-                smb2_set_error(smb2, "dcerpc bind failed");
+        /* We can achieve BIND doing write and read on the PIPE too, similar to SMB1 */
+        status = smb2_ioctl(smb2, fh,
+                            FSCTL_PIPE_TRANSCEIVE,
+                            SMB2_0_IOCTL_IS_FSCTL,
+                            write_buf, write_count,
+                            read_buf, &bytes_read);
+        if (status != SMB2_STATUS_SUCCESS) {
+                smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed for BIND : %s", smb2_get_error(smb2));
                 return -1;
         }
-        bytes_read = fh->byte_count;
 
         if (dcerpc_get_response_header(read_buf, bytes_read, &rsp_hdr) < 0) {
                 smb2_set_error(smb2, "failed to parse dcerpc response header");
@@ -1237,7 +1237,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 if (offset > max_xmit_frag) {
                         smb2_set_error(smb2, "smb2_list_shares: IOCTL Payload size is "
                                              "larger than max_xmit_frag");
-//                        return -1; // disabled because of NetApp
+                        return -1;
                 }
 
                 status = smb2_ioctl(smb2, fh,

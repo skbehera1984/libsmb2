@@ -163,26 +163,12 @@ smb2_process_read_fixed(struct smb2_context *smb2,
                 return 0;
         }
 
-#if 0
         if (rep->data_offset != SMB2_HEADER_SIZE + 16) {
                 smb2_set_error(smb2, "Unexpected data offset in Read reply. "
                                "Expected %d, got %d",
                                16, rep->data_offset);
                 return -1;
         }
-#else
-        /* NetApp SMB2 read response sometimes adds 8 byte padding after the fixed part,
-           just before the data. which most smb2 servers including windows don't.
-           Its not mentioned in the protocol refs too.
-
-           This increases the data offset by 8 bytes. So the end result is first 8 bytes
-           of read data will be all 0's.
-        */
-
-        if (rep->data_offset > SMB2_HEADER_SIZE + 16) {
-                rep->data_length += rep->data_offset - (SMB2_HEADER_SIZE + 16);
-        }
-#endif
 
         return rep->data_length;
 }
