@@ -262,6 +262,7 @@ read_more_data:
         }
         if (count == 0) {
                 /* remote side has closed the socket. */
+                smb2_set_error(smb2, "Remote side has closed the socket");
                 return -1;
         }
         smb2->in.num_done += count;
