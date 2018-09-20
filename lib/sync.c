@@ -1874,6 +1874,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
         offset = 0;
 
+#if 0
         dceOpReq = (struct DceRpcOperationRequest *)&dceRpcBuf[0];
         offset += sizeof(struct DceRpcOperationRequest);
 
@@ -1906,6 +1907,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                 smb2_set_error(smb2, "smb2_lookUpSid:dcerpc_parse_Operation_Response failed : %x", status);
                 return -1;
         }
+#endif
 
         /* close the pipe & disconnect */
         smb2_close(smb2, fh);
