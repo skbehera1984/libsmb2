@@ -1802,7 +1802,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                             output_count,
                                             &dceOpRes2,
                                             &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid: dcerpc_parse_Operation_Response failed : %x", status);
+                smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for OpenPolicy2 : %x", status);
                 return -1;
         }
 
@@ -1846,7 +1846,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                             dceRpcBuf, offset,
                             output_buf, &output_count);
         if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for close policy: %s", smb2_get_error(smb2));
+                smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for LookupNames : %s", smb2_get_error(smb2));
                 return -1;
         }
         if (dcerpc_parse_Operation_Response(smb2,
@@ -1854,7 +1854,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                             output_count,
                                             &dceOpRes2,
                                             &status) < 0) {
-                smb2_set_error(smb2, "smb2_lookUpSid:dcerpc_parse_Operation_Response failed : %x", status);
+                smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for LookupNames : %x", status);
                 return -1;
         }
 
