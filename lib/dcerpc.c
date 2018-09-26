@@ -1111,6 +1111,11 @@ lsarpc_parse_LookupNamesRes(struct smb2_context *smb2,
         offset += (2 * domainName.length);
     }
 
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
     /* Now get the SID */
     pUint32 = (uint32_t*) (buffer+offset);
     maxSubAuthCount = le32toh(*pUint32);
