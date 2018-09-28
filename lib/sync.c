@@ -867,7 +867,7 @@ retry:
                 return SMB2_STATUS_INTERNAL_ERROR;
         }
 
-        smb2_free_data(smb2, info.u_info.security_info);
+        smb2_free_security_descriptor(smb2, info.u_info.security_info);
         info.u_info.security_info= NULL;
 
         *buf = relative_sec;
@@ -939,7 +939,7 @@ retry:
                 return SMB2_STATUS_INTERNAL_ERROR;
         }
 
-        smb2_free_data(smb2, info.u_info.security_info);
+        smb2_free_security_descriptor(smb2, info.u_info.security_info);
         info.u_info.security_info= NULL;
 
         *buf = relative_sec;
@@ -971,16 +971,15 @@ smb2_set_security(struct smb2_context *smb2,
         vec.buf = buf;
         vec.len = buf_len;
 
-        secdesc = (struct smb2_security_descriptor *)
-                          smb2_alloc_init(smb2, sizeof(struct smb2_security_descriptor));
-        if (smb2_decode_security_descriptor(smb2, secdesc, secdesc, &vec)) {
+        secdesc = (struct smb2_security_descriptor *)malloc(sizeof(struct smb2_security_descriptor));
+        if (smb2_decode_security_descriptor(smb2, secdesc, &vec)) {
                 smb2_set_error(smb2, "could not decode security "
                                       "descriptor. %s",
                                smb2_get_error(smb2));
                 return SMB2_STATUS_INTERNAL_ERROR;
         }
         print_security_descriptor(secdesc);
-        smb2_free_data(smb2, secdesc); secdesc = NULL;
+        smb2_free_security_descriptor(smb2, secdesc); secdesc = NULL;
 #endif
 
         memset(&info, 0, sizeof(smb2_file_info));
@@ -1027,16 +1026,15 @@ smb2_fset_security(struct smb2_context *smb2,
         vec.buf = buf;
         vec.len = buf_len;
 
-        secdesc = (struct smb2_security_descriptor *)
-                          smb2_alloc_init(smb2, sizeof(struct smb2_security_descriptor));
-        if (smb2_decode_security_descriptor(smb2, secdesc, secdesc, &vec)) {
+        secdesc = (struct smb2_security_descriptor *)malloc(sizeof(struct smb2_security_descriptor));
+        if (smb2_decode_security_descriptor(smb2, secdesc, &vec)) {
                 smb2_set_error(smb2, "could not decode security "
                                       "descriptor. %s",
                                smb2_get_error(smb2));
                 return SMB2_STATUS_INTERNAL_ERROR;
         }
         print_security_descriptor(secdesc);
-        smb2_free_data(smb2, secdesc); secdesc = NULL;
+        smb2_free_security_descriptor(smb2, secdesc); secdesc = NULL;
 #endif
 
         memset(&info, 0, sizeof(smb2_file_info));

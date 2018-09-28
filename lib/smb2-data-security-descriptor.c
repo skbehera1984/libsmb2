@@ -154,7 +154,7 @@ smb2_get_security_descriptor_size(const struct smb2_security_descriptor *sd)
 }
 
 static struct smb2_sid *
-decode_sid(struct smb2_context *smb2, void *memctx, struct smb2_iovec *v)
+decode_sid(struct smb2_context *smb2, struct smb2_iovec *v)
 {
         struct smb2_sid *sid;
         uint8_t revision, sub_auth_count;
@@ -178,9 +178,7 @@ decode_sid(struct smb2_context *smb2, void *memctx, struct smb2_iovec *v)
                 return NULL;
         }
 
-        sid = smb2_alloc_data(smb2, memctx,
-                              offsetof(struct smb2_sid, sub_auth) +
-                              sub_auth_count * sizeof(uint32_t));
+        sid = (struct smb2_sid *)malloc(6+(sub_auth_count * sizeof(uint32_t)));
         if (sid == NULL) {
                 smb2_set_error(smb2, "failed to allocate sid.");
                 return NULL;
@@ -201,7 +199,7 @@ decode_sid(struct smb2_context *smb2, void *memctx, struct smb2_iovec *v)
 }
 
 static struct smb2_ace *
-decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
+decode_ace(struct smb2_context *smb2, struct smb2_iovec *vec)
 {
         struct smb2_iovec v = *vec;
         uint8_t ace_type, ace_flags;
@@ -217,7 +215,7 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
         smb2_get_uint8(&v, 1, &ace_flags);
         smb2_get_uint16(&v, 2, &ace_size);
 
-        ace = smb2_alloc_data(smb2, memctx, sizeof(struct smb2_ace));
+        ace = (struct smb2_ace *)malloc(sizeof(struct smb2_ace));
         if (ace == NULL) {
                 smb2_set_error(smb2, "failed to allocate ace.");
                 return NULL;
@@ -226,7 +224,12 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
         ace->ace_type  = ace_type;
         ace->ace_flags = ace_flags;
         ace->ace_size  = ace_size;
-        
+
+        /* set the fields to NULL */
+        ace->sid = NULL;
+        ace->ad_data = NULL;
+        ace->raw_data = NULL;
+
         /* Skip past the header */
         if (ace_size < 4) {
                 smb2_set_error(smb2, "not enough data for ace data.");
@@ -248,14 +251,14 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
         case SMB2_SYSTEM_MANDATORY_LABEL_ACE_TYPE:
         case SMB2_SYSTEM_SCOPED_POLICY_ID_ACE_TYPE:
                 smb2_get_uint32(&v, 0, &ace->mask);
-                
+
                 if (v.len < 4) {
                         smb2_set_error(smb2, "not enough data for ace data.");
                         return NULL;
                 }
                 v.len -= 4;
                 v.buf = &v.buf[4];
-                ace->sid = decode_sid(smb2, memctx, &v);
+                ace->sid = decode_sid(smb2, &v);
                 break;
         case SMB2_ACCESS_ALLOWED_OBJECT_ACE_TYPE:
         case SMB2_ACCESS_DENIED_OBJECT_ACE_TYPE:
@@ -281,7 +284,7 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
 
                 v.len -= SMB2_OBJECT_TYPE_SIZE;
                 v.buf = &v.buf[SMB2_OBJECT_TYPE_SIZE];
-                ace->sid = decode_sid(smb2, memctx, &v);
+                ace->sid = decode_sid(smb2, &v);
                 break;
         case SMB2_ACCESS_ALLOWED_CALLBACK_ACE_TYPE:
         case SMB2_ACCESS_DENIED_CALLBACK_ACE_TYPE:
@@ -294,10 +297,10 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
                 }
                 v.len -= 4;
                 v.buf = &v.buf[4];
-                ace->sid = decode_sid(smb2, memctx, &v);
+                ace->sid = decode_sid(smb2, &v);
 
                 ace->ad_len = v.len;
-                ace->ad_data = smb2_alloc_data(smb2, memctx, ace->ad_len);
+                ace->ad_data = malloc(ace->ad_len);
                 if (ace->ad_data == NULL) {
                         return NULL;
                 }
@@ -305,7 +308,7 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
                 break;
         default:
                 ace->raw_len = v.len;
-                ace->raw_data = smb2_alloc_data(smb2, memctx, ace->raw_len);
+                ace->raw_data = malloc(ace->raw_len);
                 if (ace->raw_data == NULL) {
                         return NULL;
                 }
@@ -316,7 +319,7 @@ decode_ace(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
 }
 
 static struct smb2_acl *
-decode_acl(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
+decode_acl(struct smb2_context *smb2, struct smb2_iovec *vec)
 {
         struct smb2_iovec v = *vec;
         struct smb2_acl *acl;
@@ -351,7 +354,7 @@ decode_acl(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
                 return NULL;
         }
 
-        acl = smb2_alloc_data(smb2, memctx, sizeof(struct smb2_acl));
+        acl = (struct smb2_acl*)malloc(sizeof(struct smb2_acl));
         if (acl == NULL) {
                 smb2_set_error(smb2, "failed to allocate acl.");
                 return NULL;
@@ -365,8 +368,9 @@ decode_acl(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
         v.len -= 8;
         v.buf = &v.buf[8];
 
+        acl->aces = NULL;
         for (i = 0; i < ace_count; i++) {
-                struct smb2_ace *ace = decode_ace(smb2, memctx, &v);
+                struct smb2_ace *ace = decode_ace(smb2, &v);
 
                 if (ace == NULL) {
                         smb2_set_error(smb2, "failed to decode ace # %d: %s",
@@ -390,7 +394,6 @@ decode_acl(struct smb2_context *smb2, void *memctx, struct smb2_iovec *vec)
 
 int
 smb2_decode_security_descriptor(struct smb2_context *smb2,
-                                void *memctx,
                                 struct smb2_security_descriptor *sd,
                                 struct smb2_iovec *vec)
 {
@@ -422,7 +425,7 @@ smb2_decode_security_descriptor(struct smb2_context *smb2,
                 v.buf = &vec->buf[offset_owner];
                 v.len = vec->len - offset_owner;
 
-                sd->owner = decode_sid(smb2, memctx, &v);
+                sd->owner = decode_sid(smb2, &v);
                 if (sd->owner == NULL) {
                         smb2_set_error(smb2, "failed to decode owner sid: %s",
                                        smb2_get_error(smb2));
@@ -435,7 +438,7 @@ smb2_decode_security_descriptor(struct smb2_context *smb2,
                 v.buf = &vec->buf[offset_group];
                 v.len = vec->len - offset_group;
 
-                sd->group = decode_sid(smb2, sd, &v);
+                sd->group = decode_sid(smb2, &v);
                 if (sd->group == NULL) {
                         smb2_set_error(smb2, "failed to decode group sid: %s",
                                        smb2_get_error(smb2));
@@ -448,14 +451,14 @@ smb2_decode_security_descriptor(struct smb2_context *smb2,
                 v.buf = &vec->buf[offset_dacl];
                 v.len = vec->len - offset_dacl;
 
-                sd->dacl = decode_acl(smb2, sd, &v);
+                sd->dacl = decode_acl(smb2, &v);
                 if (sd->dacl == NULL) {
                         smb2_set_error(smb2, "failed to decode dacl: %s",
                                        smb2_get_error(smb2));
                         return -1;
                 }
         }
-        
+
         return 0;
 }
 
@@ -757,6 +760,73 @@ smb2_encode_security_descriptor(struct smb2_context *smb2,
         *buffer_len = offset;
 
         return 0;
+}
+
+static void
+free_sid(struct smb2_context *smb2, struct smb2_sid *sid)
+{
+        if (!sid)
+            return;
+        free(sid);
+}
+
+static void
+free_ace(struct smb2_context *smb2, struct smb2_ace *ace)
+{
+        if (!ace)
+            return;
+
+        if (ace->sid) {
+            free_sid(smb2, ace->sid);
+            ace->sid = NULL;
+        }
+        if (ace->ad_data) {
+            free(ace->ad_data);
+            ace->ad_data = NULL;
+        }
+        if (ace->raw_data) {
+            free(ace->raw_data);
+            ace->raw_data = NULL;
+        }
+
+        free(ace);
+}
+
+static void
+free_acl(struct smb2_context *smb2, struct smb2_acl *acl)
+{
+        struct smb2_ace *ace = NULL;
+        if (!acl)
+            return;
+
+        ace = acl->aces;
+        for (; ace; ace = ace->next) {
+            free_ace(smb2, ace);
+        }
+        free(acl);
+}
+
+void
+smb2_free_security_descriptor(struct smb2_context *smb2,
+                              struct smb2_security_descriptor *sd)
+{
+        if (!sd)
+            return;
+
+        if (sd->owner) {
+                free_sid(smb2, sd->owner);
+                sd->owner = NULL;
+        }
+        if (sd->group) {
+                free_sid(smb2, sd->group);
+                sd->group = NULL;
+        }
+        if (sd->dacl) {
+                free_acl(smb2, sd->dacl);
+                sd->dacl = NULL;
+        }
+
+        free(sd);
 }
 
 static void

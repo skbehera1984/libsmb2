@@ -236,9 +236,8 @@ smb2_process_query_info_variable(struct smb2_context *smb2,
                 }
                 break;
         case SMB2_0_INFO_SECURITY:
-                ptr = smb2_alloc_init(smb2,
-                                      sizeof(struct smb2_security_descriptor));
-                if (smb2_decode_security_descriptor(smb2, ptr, ptr, &vec)) {
+                ptr = malloc(sizeof(struct smb2_security_descriptor));
+                if (smb2_decode_security_descriptor(smb2, ptr, &vec)) {
                         smb2_set_error(smb2, "could not decode security "
                                        "descriptor. %s",
                                        smb2_get_error(smb2));
