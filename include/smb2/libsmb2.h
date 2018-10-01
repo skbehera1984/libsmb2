@@ -24,6 +24,7 @@ extern "C" {
 #endif
 
 struct smb2_context;
+struct smb2_iovec;
 
 /*
  * Generic callback for completion of smb2_*_async().
@@ -1265,6 +1266,18 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                    const char *domain,
                    const char *server,
                    uint8_t   **sid);
+
+int smb2_decode_security_descriptor(struct smb2_context *smb2,
+                                    struct smb2_security_descriptor *sd,
+                                    struct smb2_iovec *vec);
+
+int smb2_encode_security_descriptor(struct smb2_context *smb2,
+                                    const struct smb2_security_descriptor *sd,
+                                    uint8_t *encoded_sec,
+                                    uint32_t *encoded_sec_len);
+
+void smb2_free_security_descriptor(struct smb2_context *smb2,
+                                   struct smb2_security_descriptor *sd);
 
 #ifdef __cplusplus
 }
