@@ -226,6 +226,8 @@ decode_ace(struct smb2_context *smb2, struct smb2_iovec *vec)
         ace->ace_size  = ace_size;
 
         /* set the fields to NULL */
+        ace->ad_len = 0;
+        ace->raw_len = 0;
         ace->sid = NULL;
         ace->ad_data = NULL;
         ace->raw_data = NULL;
@@ -458,6 +460,31 @@ smb2_decode_security_descriptor(struct smb2_context *smb2,
                         return -1;
                 }
         }
+
+        return 0;
+}
+
+int
+smb2_decode_security_descriptor_buf(struct smb2_context *smb2,
+                                    struct smb2_security_descriptor **sd,
+                                    uint8_t *buf,
+                                    uint32_t *buf_len)
+{
+        struct smb2_iovec vec;
+        struct smb2_security_descriptor* ptr = NULL;
+        vec.buf = buf;
+        vec.len = *buf_len;
+
+        ptr = (struct smb2_security_descriptor*)
+                malloc(sizeof(struct smb2_security_descriptor));
+
+        if (smb2_decode_security_descriptor(smb2, ptr, &vec)) {
+                smb2_set_error(smb2, "could not decode security descriptor. %s",
+                               smb2_get_error(smb2));
+                return -1;
+        }
+
+        *sd = ptr;
 
         return 0;
 }

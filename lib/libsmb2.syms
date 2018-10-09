@@ -106,3 +106,7 @@ smb2_getinfo_stream
 smb2_fgetinfo_stream
 smb2_free_file_stream_info
 smb2_lookUpSid
+smb2_decode_security_descriptor
+smb2_decode_security_descriptor_buf
+smb2_encode_security_descriptor
+smb2_free_security_descriptor

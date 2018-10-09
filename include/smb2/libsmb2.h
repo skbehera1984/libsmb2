@@ -1271,6 +1271,11 @@ int smb2_decode_security_descriptor(struct smb2_context *smb2,
                                     struct smb2_security_descriptor *sd,
                                     struct smb2_iovec *vec);
 
+int smb2_decode_security_descriptor_buf(struct smb2_context *smb2,
+                                        struct smb2_security_descriptor **sd,
+                                        uint8_t *buf,
+                                        uint32_t *buf_len);
+
 int smb2_encode_security_descriptor(struct smb2_context *smb2,
                                     const struct smb2_security_descriptor *sd,
                                     uint8_t *encoded_sec,
