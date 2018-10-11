@@ -178,7 +178,7 @@ decode_sid(struct smb2_context *smb2, struct smb2_iovec *v)
                 return NULL;
         }
 
-        sid = (struct smb2_sid *)malloc(6+(sub_auth_count * sizeof(uint32_t)));
+        sid = (struct smb2_sid *)malloc(8+(sub_auth_count * sizeof(uint32_t)));
         if (sid == NULL) {
                 smb2_set_error(smb2, "failed to allocate sid.");
                 return NULL;
