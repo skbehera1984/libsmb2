@@ -1059,6 +1059,9 @@ lsarpc_parse_LookupNamesRes(struct smb2_context *smb2,
     uint32_t *pUint32 = NULL;
     uint16_t *pUint16 = NULL;
 
+    uint32_t ridEntries = 0, ridMaxCount = 0, RID = 0, domainIndex = 0;
+    uint16_t sidTypeValue = 0;
+
     stsptr = (uint32_t*)(buffer+(bufLen-4));
     *status = le32toh(*stsptr);
     if(*status) {
@@ -1158,9 +1161,57 @@ lsarpc_parse_LookupNamesRes(struct smb2_context *smb2,
     }
     offset += sub_auth_count*sizeof(uint32_t);
 
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    /* get the RID here and append them to subAuth incrementing the sub_auth_count */
+    pUint32 = (uint32_t*)(buffer+offset);
+    ridEntries = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+    offset += sizeof(uint32_t); /* skip the SidsPtr */
+
+    pUint32 = (uint32_t*)(buffer+offset);
+    ridMaxCount = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    pUint16 = (uint16_t*)(buffer+offset);
+    sidTypeValue = le16toh(*pUint16);
+    offset += sizeof(uint16_t);
+
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 4 - (offset & 0x03);
+        offset += padlen;
+    }
+
+    pUint32 = (uint32_t*)(buffer+offset);
+    RID = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    pUint32 = (uint32_t*)(buffer+offset);
+    domainIndex = le32toh(*pUint32);
+    offset += sizeof(uint32_t);
+
+    uint8_t old_sub_auth_count = sub_auth_count;
+    sub_auth_count += ridEntries;
+    sidbuf = (uint8_t*)realloc(sidbuf, 8+(sub_auth_count*sizeof(uint32_t)));
+    if (sidbuf == NULL) {
+        smb2_set_error(smb2, "%s: failed to allocate2 memory for sid", __func__);
+        return -1;
+    }
+
+    mysid = (struct smb2_sid*)sidbuf;
+    mysid->revision = revision;
+    mysid->sub_auth_count = sub_auth_count;
+    /* get the place to copy the rid */
+    uint32_t *prid = (uint32_t *)(sidbuf+(8+(old_sub_auth_count*sizeof(uint32_t))));
+    *prid = RID;
+
     /* to avoid build failure */
     numEntries = numEntries; MaxEntries = MaxEntries; MaxCount = MaxCount;
     Length = Length; MaxLength = MaxLength;
+    sidTypeValue = sidTypeValue; ridMaxCount = ridMaxCount; domainIndex = domainIndex;
 
     *sid = sidbuf;
     return 0;
