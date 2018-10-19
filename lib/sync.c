@@ -326,6 +326,11 @@ uint32_t smb2_pread(struct smb2_context *smb2, struct smb2fh *fh,
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
 
+        if (count ==0) {
+                /* don't send a 0 byte read, the server doesn't reply */
+                return SMB2_STATUS_SUCCESS;
+        }
+
         if (smb2_pread_async(smb2, fh, buf, count, offset,
                              sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_pread_async failed");
@@ -347,6 +352,11 @@ uint32_t smb2_pwrite(struct smb2_context *smb2, struct smb2fh *fh,
         cb_data.is_finished = 0;
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
+
+        if (count ==0) {
+                /* don't send a 0 byte write, the server doesn't reply */
+                return SMB2_STATUS_SUCCESS;
+        }
 
         if (smb2_pwrite_async(smb2, fh, buf, count, offset,
                               sync_cb, &cb_data) != 0) {
@@ -370,6 +380,11 @@ uint32_t smb2_read(struct smb2_context *smb2, struct smb2fh *fh,
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
 
+        if (count ==0) {
+                /* don't send a 0 byte read, the server doesn't reply */
+                return SMB2_STATUS_SUCCESS;
+        }
+
         if (smb2_read_async(smb2, fh, buf, count, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_read_async failed");
                 return SMB2_STATUS_PAYLOAD_FAILED;
@@ -390,6 +405,11 @@ uint32_t smb2_write(struct smb2_context *smb2, struct smb2fh *fh,
         cb_data.is_finished = 0;
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
+
+        if (count ==0) {
+                /* don't send a 0 byte write, the server doesn't reply */
+                return SMB2_STATUS_SUCCESS;
+        }
 
         if (smb2_write_async(smb2, fh, buf, count, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_write_async failed");
