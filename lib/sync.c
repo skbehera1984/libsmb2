@@ -858,6 +858,10 @@ smb2_get_security(struct smb2_context *smb2,
                 return SMB2_STATUS_SOCKET_ERROR;
         }
 
+        if (cb_data.status != SMB2_STATUS_SUCCESS) {
+                return cb_data.status;
+        }
+
 #ifdef DEBUG
         print_security_descriptor(info.u_info.security_info);
 #endif
@@ -928,6 +932,10 @@ smb2_fget_security(struct smb2_context *smb2,
         if (wait_for_reply(smb2, &cb_data) < 0)
         {
                 return SMB2_STATUS_SOCKET_ERROR;
+        }
+
+        if (cb_data.status != SMB2_STATUS_SUCCESS) {
+                return cb_data.status;
         }
 
 #ifdef DEBUG
