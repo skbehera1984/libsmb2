@@ -745,6 +745,12 @@ smb2_encode_security_descriptor(struct smb2_context *smb2,
         le_sec_desc->Sbz1     = 0;
         le_sec_desc->Control  = htole16(sd->control);
 
+        /* default offset to 0 */
+        le_sec_desc->OffsetOwner = htole32(0);
+        le_sec_desc->OffsetGroup = htole32(0);
+        le_sec_desc->OffsetSacl  = htole32(0);
+        le_sec_desc->OffsetDacl  = htole32(0);
+
         offset += (5 * sizeof(uint32_t));
 
         if (sd->owner) {
