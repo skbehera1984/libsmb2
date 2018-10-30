@@ -770,7 +770,7 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
         if (smb2->sec == SMB2_SEC_KRB5) {
                 smb2->use_cached_creds = 1;
         }
-        smb2->version = SMB2_VERSION_0202;
+        smb2->version = SMB2_VERSION_0210;
 
         switch (smb2->version) {
         case SMB2_VERSION_ANY:
