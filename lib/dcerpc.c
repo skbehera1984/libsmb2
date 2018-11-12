@@ -851,6 +851,12 @@ lsarpc_create_OpenPolicy2Req(struct smb2_context *smb2,
     /* No padding required after this for lsaOpenPolicy2 opnum 44,
      * but padding will be required for lsaOpenPolicy opnum 6
      */
+    if ((offset & 0x03) != 0) {
+        uint32_t padlen = 0;
+        padlen = 4 - (offset & 0x03);
+        offset += padlen; /* padding is required for opnum 44 too */
+    }
+
 
     /* ObjectAttributes is not used so set them to 0, only set the len to 24 i.e
      * size of ObjectAttributes
