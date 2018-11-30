@@ -948,6 +948,19 @@ open_cb(struct smb2_context *smb2, uint32_t status,
         }
         create_data->status = status;
 
+        fh->file_id.persistent_id = rep->file_id.persistent_id;
+        fh->file_id.volatile_id = rep->file_id.volatile_id;
+
+        fh->oplock_level = rep->oplock_level;
+        fh->create_action = rep->create_action;
+        fh->creation_time = rep->creation_time;
+        fh->lastAccess_time = rep->last_access_time;
+        fh->lastWrite_time = rep->last_write_time;
+        fh->change_time = rep->change_time;
+        fh->allocation_size = rep->allocation_size;
+        fh->end_of_file = rep->end_of_file;
+        fh->file_attributes = rep->file_attributes;
+
         if (create_data->acb_data_U.cr_data.needToClose) {
                 if (smb2_close_async(smb2, fh, create_data->cb, create_data->cb_data) != 0) {
                         smb2_set_error(smb2, "SMB2_CLOSE failed - %s", smb2_get_error(smb2));
@@ -957,21 +970,7 @@ open_cb(struct smb2_context *smb2, uint32_t status,
                 free(create_data);
                 return;
         } else {
-                fh->file_id.persistent_id = rep->file_id.persistent_id;
-                fh->file_id.volatile_id = rep->file_id.volatile_id;
-
-                fh->oplock_level = rep->oplock_level;
-                fh->create_action = rep->create_action;
-                fh->creation_time = rep->creation_time;
-                fh->lastAccess_time = rep->last_access_time;
-                fh->lastWrite_time = rep->last_write_time;
-                fh->change_time = rep->change_time;
-                fh->allocation_size = rep->allocation_size;
-                fh->end_of_file = rep->end_of_file;
-                fh->file_attributes = rep->file_attributes;
-
                 create_data->cb(smb2, SMB2_STATUS_SUCCESS, fh, create_data->cb_data);
-
                 create_data->fh = NULL;
                 free(create_data);
         }
