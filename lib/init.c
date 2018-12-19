@@ -100,6 +100,8 @@ smb2_parse_args(struct smb2_context *smb2, const char *args)
                                 smb2->version = SMB2_VERSION_0300;
                         } else if(!strcmp(value, "3.02")) {
                                 smb2->version = SMB2_VERSION_0302;
+                        } else if(!strcmp(value, "3.11")) {
+                                smb2->version = SMB2_VERSION_0311;
                         } else {
                                 smb2_set_error(smb2, "Unknown vers= argument: "
                                                "%s", value);

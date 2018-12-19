@@ -774,11 +774,12 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
 
         switch (smb2->version) {
         case SMB2_VERSION_ANY:
-                req.dialect_count = 4;
+                req.dialect_count = 5;
                 req.dialects[0] = SMB2_VERSION_0202;
                 req.dialects[1] = SMB2_VERSION_0210;
                 req.dialects[2] = SMB2_VERSION_0300;
                 req.dialects[3] = SMB2_VERSION_0302;
+                req.dialects[4] = SMB2_VERSION_0311;
                 break;
         case SMB2_VERSION_ANY2:
                 req.dialect_count = 2;
@@ -786,14 +787,16 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
                 req.dialects[1] = SMB2_VERSION_0210;
                 break;
         case SMB2_VERSION_ANY3:
-                req.dialect_count = 2;
+                req.dialect_count = 3;
                 req.dialects[0] = SMB2_VERSION_0300;
                 req.dialects[1] = SMB2_VERSION_0302;
+                req.dialects[2] = SMB2_VERSION_0311;
                 break;
         case SMB2_VERSION_0202:
         case SMB2_VERSION_0210:
         case SMB2_VERSION_0300:
         case SMB2_VERSION_0302:
+        case SMB2_VERSION_0311:
                 req.dialect_count = 1;
                 req.dialects[0] = smb2->version;
                 break;

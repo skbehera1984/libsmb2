@@ -36,6 +36,8 @@ const char *nterror_to_str(uint32_t status) {
                 return "STATUS_ACCESS_DENIED";
         case SMB2_STATUS_LOGON_FAILURE:
                 return "STATUS_LOGON_FAILURE";
+        case SMB2_STATUS_NOT_SUPPORTED:
+                return "SMB2_STATUS_NOT_SUPPORTED";
         case SMB2_STATUS_BAD_NETWORK_NAME:
                 return "STATUS_BAD_NETWORK_NAME";
         case SMB2_STATUS_NOT_A_DIRECTORY:

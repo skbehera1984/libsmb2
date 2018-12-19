@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 
         smb2_set_security_mode(smb2, SMB2_NEGOTIATE_SIGNING_ENABLED);
 
-        if (smb2_connect_share(smb2, url->server, "IPC$", NULL) < 0) {
+        if (smb2_connect_share(smb2, url->server, "IPC$", NULL) != 0) {
 		printf("Failed to connect to IPC$. %s\n",
                        smb2_get_error(smb2));
 		exit(10);
