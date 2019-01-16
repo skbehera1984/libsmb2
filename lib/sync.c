@@ -153,6 +153,12 @@ smb2dir *smb2_querydir(struct smb2_context *smb2,
 
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return NULL;
+        }
+
         if (path == NULL) {
                 path = "";
         }
@@ -202,6 +208,12 @@ smb2_open_file(struct smb2_context *smb2,
         struct sync_cb_data cb_data;
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return NULL;
+        }
+
         if (smb2_open_file_async(smb2, path,
                                  security_flags,
                                  SMB2_IMPERSONATION_IMPERSONATION,
@@ -232,6 +244,12 @@ struct smb2fh *smb2_open(struct smb2_context *smb2, const char *path, int flags)
 
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return NULL;
+        }
+
         if (smb2_open_async(smb2, path, flags, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_open_async failed");
                 return NULL;
@@ -252,6 +270,12 @@ struct smb2fh *smb2_open_pipe(struct smb2_context *smb2, const char *pipe)
 {
         struct   sync_cb_data cb_data;
         cb_data.is_finished = 0;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return NULL;
+        }
 
         if (pipe == NULL) {
                 smb2_set_error(smb2, "smb2_open_pipe:no pipe path provided");
@@ -281,6 +305,12 @@ uint32_t smb2_close(struct smb2_context *smb2, struct smb2fh *fh)
         struct sync_cb_data cb_data;
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (smb2_close_async(smb2, fh, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_close_async failed");
                 return SMB2_STATUS_PAYLOAD_FAILED;
@@ -301,6 +331,12 @@ uint32_t smb2_fsync(struct smb2_context *smb2, struct smb2fh *fh)
         struct sync_cb_data cb_data;
 
         cb_data.is_finished = 0;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         if (smb2_fsync_async(smb2, fh, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_fsync_async failed");
@@ -325,6 +361,12 @@ uint32_t smb2_pread(struct smb2_context *smb2, struct smb2fh *fh,
         cb_data.is_finished = 0;
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         if (count ==0) {
                 /* don't send a 0 byte read, the server doesn't reply */
@@ -353,6 +395,12 @@ uint32_t smb2_pwrite(struct smb2_context *smb2, struct smb2fh *fh,
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (count ==0) {
                 /* don't send a 0 byte write, the server doesn't reply */
                 return SMB2_STATUS_SUCCESS;
@@ -380,6 +428,12 @@ uint32_t smb2_read(struct smb2_context *smb2, struct smb2fh *fh,
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (count ==0) {
                 /* don't send a 0 byte read, the server doesn't reply */
                 return SMB2_STATUS_SUCCESS;
@@ -406,6 +460,12 @@ uint32_t smb2_write(struct smb2_context *smb2, struct smb2fh *fh,
         fh->byte_count = 0;
         fh->bytes_remaining = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (count ==0) {
                 /* don't send a 0 byte write, the server doesn't reply */
                 return SMB2_STATUS_SUCCESS;
@@ -429,6 +489,12 @@ uint32_t smb2_unlink(struct smb2_context *smb2, const char *path)
 
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (smb2_unlink_async(smb2, path, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_unlink_async failed");
                 return SMB2_STATUS_PAYLOAD_FAILED;
@@ -447,6 +513,12 @@ uint32_t smb2_rmdir(struct smb2_context *smb2, const char *path)
 
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (smb2_rmdir_async(smb2, path, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_rmdir_async failed");
                 return SMB2_STATUS_PAYLOAD_FAILED;
@@ -464,6 +536,12 @@ uint32_t smb2_mkdir(struct smb2_context *smb2, const char *path)
         struct sync_cb_data cb_data;
 
         cb_data.is_finished = 0;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         if (smb2_mkdir_async(smb2, path, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_mkdir_async failed");
@@ -484,6 +562,12 @@ uint32_t smb2_fstat(struct smb2_context *smb2, struct smb2fh *fh,
 
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (smb2_fstat_async(smb2, fh, st, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_fstat_async failed");
                 return SMB2_STATUS_PAYLOAD_FAILED;
@@ -502,6 +586,12 @@ uint32_t smb2_stat(struct smb2_context *smb2, const char *path,
         struct sync_cb_data cb_data;
 	    cb_data.is_finished = 0;
         smb2_file_info info;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_ALL_INFORMATION;
@@ -541,6 +631,12 @@ uint32_t smb2_statvfs(struct smb2_context *smb2, const char *path,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILESYSTEM;
         info.file_info_class = SMB2_FILE_FS_FULL_SIZE_INFORMATION;
 
@@ -570,6 +666,12 @@ smb2_getinfo_all(struct smb2_context *smb2,
         struct sync_cb_data cb_data;
         cb_data.is_finished = 0;
         smb2_file_info info;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_ALL_INFORMATION;
@@ -619,6 +721,12 @@ smb2_fgetinfo_all(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_ALL_INFORMATION;
 
@@ -667,6 +775,12 @@ smb2_setinfo_basic(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (basic_info == NULL) {
                 smb2_set_error(smb2, "%s : no info to set");
                 return SMB2_STATUS_INVALID_ARGUMENT;
@@ -698,6 +812,12 @@ smb2_fsetinfo_basic(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (basic_info == NULL) {
                 smb2_set_error(smb2, "%s : no info to set");
                 return SMB2_STATUS_INVALID_ARGUMENT;
@@ -728,6 +848,12 @@ uint32_t smb2_rename(struct smb2_context *smb2,
         smb2_file_info info;
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         memset(&info, 0, sizeof(smb2_file_info));
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_RENAME_INFORMATION;
@@ -754,6 +880,12 @@ uint32_t smb2_truncate(struct smb2_context *smb2,
         smb2_file_info info;
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         memset(&info, 0, sizeof(smb2_file_info));
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_END_OF_FILE_INFORMATION;
@@ -779,6 +911,12 @@ uint32_t smb2_ftruncate(struct smb2_context *smb2,
         struct sync_cb_data cb_data;
 
         cb_data.is_finished = 0;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         if (smb2_ftruncate_async(smb2, fh, length, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_ftruncate_async failed. %s",
@@ -1099,6 +1237,12 @@ smb2_ioctl(struct smb2_context *smb2, struct smb2fh *fh,
 
         cb_data.is_finished = 0;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (smb2_ioctl_async(smb2, fh,
                              ioctl_ctl, ioctl_flags,
                              input_buffer, input_count,
@@ -1384,6 +1528,12 @@ smb2_getinfo_basic(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
 
@@ -1411,6 +1561,12 @@ smb2_fgetinfo_basic(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_BASIC_INFORMATION;
 
@@ -1436,6 +1592,12 @@ smb2_getinfo_standard(struct smb2_context *smb2,
         struct sync_cb_data cb_data;
         cb_data.is_finished = 0;
         smb2_file_info info;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
@@ -1463,6 +1625,12 @@ smb2_fgetinfo_standard(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_STANDARD_INFORMATION;
 
@@ -1489,6 +1657,12 @@ smb2_getinfo_extended(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
 
@@ -1514,6 +1688,12 @@ smb2_fgetinfo_extended(struct smb2_context *smb2,
         struct sync_cb_data cb_data;
         cb_data.is_finished = 0;
         smb2_file_info info;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
@@ -1568,6 +1748,12 @@ smb2_setinfo_extended(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (extended_info == NULL) {
                 smb2_set_error(smb2, "%s : no info to set");
                 return -1;
@@ -1610,6 +1796,12 @@ smb2_fsetinfo_extended(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         if (extended_info == NULL) {
                 smb2_set_error(smb2, "%s : no info to set");
                 return -1;
@@ -1651,6 +1843,12 @@ smb2_getinfo_stream(struct smb2_context *smb2,
         cb_data.is_finished = 0;
         smb2_file_info info;
 
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
+
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
 
@@ -1676,6 +1874,12 @@ smb2_fgetinfo_stream(struct smb2_context *smb2,
         struct sync_cb_data cb_data;
         cb_data.is_finished = 0;
         smb2_file_info info;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return SMB2_STATUS_CONNECTION_DISCONNECTED;
+        }
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
