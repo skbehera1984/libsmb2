@@ -2118,6 +2118,10 @@ smb2_ioctl_async(struct smb2_context *smb2, struct smb2fh *fh,
         if (payload > smb2_get_max_transact_size(smb2)) {
                 payload = smb2_get_max_transact_size(smb2) - 1024;
         }
+        /* use user provided payload count */
+        if (*output_count < payload) {
+                payload = *output_count;
+        }
         req.max_output_response = payload;
 
         pdu = smb2_cmd_ioctl_async(smb2, &req, ioctl_cb, ioctl_d);
