@@ -1269,14 +1269,14 @@ int smb2_list_shares(struct smb2_context *smb2,
                      int *numshares
                     )
 {
-        uint32_t status = 0;
-        struct smb2fh *fh = NULL;
-        uint8_t write_buf[1024] = {0};
-        uint32_t write_count = 0;
-        uint8_t read_buf[1024] ={0};
-        uint32_t bytes_read = 0;
-        struct rpc_bind_request bind_req;
-        struct context_item dcerpc_ctx;
+        uint32_t  status = 0;
+        struct    smb2fh *fh = NULL;
+        uint8_t   ioctl_IN[1024] = {0};
+        uint32_t  ioctl_IN_Cnt = 0;
+        uint8_t   ioctl_OUT[1024] ={0};
+        uint32_t  ioctl_OUT_Cnt = 1024;
+        struct    rpc_bind_request bind_req;
+        struct    context_item dcerpc_ctx;
 
         struct rpc_header rsp_hdr;
         struct rpc_bind_response ack;
@@ -1318,35 +1318,35 @@ int smb2_list_shares(struct smb2_context *smb2,
         dcerpc_create_bind_req(&bind_req, 1);
         dcerpc_init_context(&dcerpc_ctx, CONTEXT_SRVSVC);
 
-        write_count = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
-        memcpy(write_buf, &bind_req, sizeof(struct rpc_bind_request));
-        memcpy(write_buf+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
+        ioctl_IN_Cnt = sizeof(struct rpc_bind_request) + sizeof(struct context_item);
+        memcpy(ioctl_IN, &bind_req, sizeof(struct rpc_bind_request));
+        memcpy(ioctl_IN+sizeof(struct rpc_bind_request), &dcerpc_ctx, sizeof(struct context_item));
 
         /* We can achieve BIND doing write and read on the PIPE too, similar to SMB1 */
         status = smb2_ioctl(smb2, fh,
                             FSCTL_PIPE_TRANSCEIVE,
                             SMB2_0_IOCTL_IS_FSCTL,
-                            write_buf, write_count,
-                            read_buf, &bytes_read);
+                            ioctl_IN, ioctl_IN_Cnt,
+                            ioctl_OUT, &ioctl_OUT_Cnt);
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed for BIND : %s", smb2_get_error(smb2));
                 return -1;
         }
 
-        if (dcerpc_get_response_header(read_buf, bytes_read, &rsp_hdr) < 0) {
+        if (dcerpc_get_response_header(ioctl_OUT, ioctl_OUT_Cnt, &rsp_hdr) < 0) {
                 smb2_set_error(smb2, "failed to parse dcerpc response header");
                 return -1;
         }
 
         if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
-                if (dcerpc_get_bind_nack_response(read_buf, bytes_read, &nack) < 0) {
+                if (dcerpc_get_bind_nack_response(ioctl_OUT, ioctl_OUT_Cnt, &nack) < 0) {
                         smb2_set_error(smb2, "failed to parse dcerpc BINDNACK response");
                         return -1;
                 }
                 smb2_set_error(smb2, "dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
                 return -1;
         } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
-                if (dcerpc_get_bind_ack_response(read_buf, bytes_read, &ack) < 0) {
+                if (dcerpc_get_bind_ack_response(ioctl_OUT, ioctl_OUT_Cnt, &ack) < 0) {
                         smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
                         return -1;
                 }
@@ -1364,6 +1364,10 @@ int smb2_list_shares(struct smb2_context *smb2,
         uint32_t resumeHandle = 0;
         uint32_t shares_read = 0;
         uint32_t total_share_count = 0;
+        uint8_t  *sharesBuff = NULL;
+        uint32_t sharesBuffLen = 0;
+
+        uint8_t *fragmentBuf = NULL;
 
         do {
                 /* we need to do this in loop till we get all shares */
@@ -1377,8 +1381,7 @@ int smb2_list_shares(struct smb2_context *smb2,
 
 #define MAX_BUF_SIZE	(64 * 1024)
                 uint8_t  output_buf[MAX_BUF_SIZE] = {0};
-                uint32_t output_count = 64 * 4096;
-                uint8_t  *resp = NULL;
+                uint32_t output_count = MAX_BUF_SIZE;
                 uint32_t share_count = 0;
 
                 struct DceRpcOperationResponse dceOpRes = {{0}};
@@ -1417,88 +1420,91 @@ int smb2_list_shares(struct smb2_context *smb2,
                                        smb2_get_error(smb2));
                         return -1;
                 }
-
-                /* Response parsing */
-                resp = &output_buf[0];
                 offset = 0;
 
-                if (dcerpc_parse_Operation_Response(smb2, resp, output_count, &dceOpRes, &status) < 0) {
+                /* save the shares data */
+                sharesBuff = (uint8_t*) malloc(output_count);
+                if (sharesBuff == NULL) {
+                        smb2_set_error(smb2, "Failed to allocate shares buffer");
+                        return -1;
+                }
+                memcpy(sharesBuff, &output_buf[0], output_count);
+                sharesBuffLen += output_count;
+
+                /* Response parsing */
+                if (dcerpc_parse_Operation_Response(smb2, sharesBuff, sharesBuffLen, &dceOpRes, &status) < 0) {
                         smb2_set_error(smb2,
                                        "dcerpc_parse_Operation_Response failed : %s",
                                        smb2_get_error(smb2));
-                        return -1;
+                        goto error;
                 }
 
                 last_frag = dceOpRes.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
                 /* read the complete dcerpc data - all frags */
                 while (!last_frag) {
-                        uint8_t *readbuf = NULL;
+                        uint32_t bytes_read = 0;
                         uint32_t frag_len = 0;
                         struct DceRpcOperationResponse dceOpRes2 = {{0}};
-                        readbuf = (uint8_t *)calloc(1, max_recv_frag);
-                        if (readbuf == NULL) {
-                                smb2_set_error(smb2, "failed to allocate readbuf");
-                                return -1;
+
+                        fragmentBuf = (uint8_t *)calloc(1, max_recv_frag);
+                        if (fragmentBuf == NULL) {
+                                smb2_set_error(smb2, "failed to allocate fragmentBuf");
+                                goto error;
                         }
                         smb2_lseek(smb2, fh, 0, SEEK_SET, NULL);
                         status = smb2_read(smb2, fh,
-                                           readbuf,
+                                           fragmentBuf,
                                            max_recv_frag);
                         if (status != SMB2_STATUS_SUCCESS && status != SMB2_STATUS_END_OF_FILE) {
                                 smb2_set_error(smb2, "failed to read remaining frags");
-                                free(readbuf); readbuf = NULL;
-                                return -1;
+                                goto error;
                         }
                         bytes_read = fh->byte_count;
                         if (dcerpc_parse_Operation_Response(smb2,
-                                                            readbuf,
+                                                            fragmentBuf,
                                                             bytes_read,
                                                             &dceOpRes2,
                                                             &status) < 0) {
                                 smb2_set_error(smb2,
                                                "dcerpc_parse_Operation_Response -2 failed : %s",
                                                smb2_get_error(smb2));
-                                free(readbuf); readbuf = NULL;
-                                return -1;
+                                goto error;
                         }
                         last_frag = dceOpRes2.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
                         frag_len = bytes_read - sizeof(struct DceRpcOperationResponse);
 
-                        if ((output_count + frag_len) > MAX_BUF_SIZE) {
-                                smb2_set_error(smb2, "smb2_list_shares : 64K is not sufficient to hold shares data");
-                                free(readbuf); readbuf = NULL;
-                                return -1;
+                        /* Extend the buffer and Append data */
+                        sharesBuff = (uint8_t*)realloc(sharesBuff, sharesBuffLen+frag_len);
+                        if (sharesBuff == NULL) {
+                                smb2_set_error(smb2, "smb2_list_shares : Failed to re-allocate sharesBuff");
+                                goto error;
                         }
-
-                        /* what if all fragments add up to > 64K?
-                         * should output_buf be malloc-ed and resized?
-                         */
-                        /*Append the buffer*/
-                        memcpy(&output_buf[output_count],
-                               readbuf+sizeof(struct DceRpcOperationResponse),
+                        memcpy(&sharesBuff[sharesBuffLen],
+                               fragmentBuf+sizeof(struct DceRpcOperationResponse),
                                frag_len);
-                        output_count += frag_len;
+                        sharesBuffLen += frag_len;
 
-                        free(readbuf);
+                        free(fragmentBuf); fragmentBuf= NULL;
                 }
 
-                payloadlen = output_count;
+                offset = 0;
+                payloadlen = sharesBuffLen;
                 offset += sizeof(struct DceRpcOperationResponse);
                 payloadlen -= sizeof(struct DceRpcOperationResponse);
 
                 srvs_sts = srvsvc_get_NetrShareEnum_status(smb2,
-                                                           resp+offset,
+                                                           sharesBuff+offset,
                                                            payloadlen);
                 if ( srvs_sts != 0x00000000 ) {
                         smb2_set_error(smb2,
                                        "SRVSVC NetrShareEnum Failed with error %x",
                                        srvs_sts);
-                        break;
+                        goto error;
                 }
                 payloadlen -= sizeof(uint32_t);
 
                 if (srvsvc_parse_NetrShareEnumResponse(smb2,
-                                                       resp+offset,
+                                                       sharesBuff+offset,
                                                        payloadlen,
                                                        &share_count,
                                                        &total_share_count,
@@ -1508,15 +1514,28 @@ int smb2_list_shares(struct smb2_context *smb2,
                         smb2_set_error(smb2,
                                        "srvsvc_parse_NetrShareEnumResponse failed : %s",
                                        smb2_get_error(smb2));
-                        return -1;
+                        goto error;
                 }
                 shares_read += share_count;
         } while (shares_read < total_share_count);
 
+        free(sharesBuff); sharesBuff = NULL;
         /* close the pipe  & disconnect */
         smb2_close(smb2, fh);
         smb2_disconnect_share(smb2);
         return 0;
+
+error:
+        if (sharesBuff) {
+            free(sharesBuff);
+        }
+        if (fragmentBuf) {
+            free(fragmentBuf);
+        }
+        /* close the pipe  & disconnect */
+        smb2_close(smb2, fh);
+        smb2_disconnect_share(smb2);
+        return-1;
 }
 
 uint32_t
