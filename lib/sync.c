@@ -2001,6 +2001,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
 
         memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
         memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
+        output_count = MAX_OUT_BUF_SIZE;
 
         /* BIND is done send OpenPolicy request */
         dceOpReq = (struct DceRpcOperationRequest *)&dceRpcBuf[0];
@@ -2050,6 +2051,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         /* LookUp names now */
         memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
         memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
+        output_count = MAX_OUT_BUF_SIZE;
         offset = 0;
 
         dceOpReq = (struct DceRpcOperationRequest *)&dceRpcBuf[0];
@@ -2102,6 +2104,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         /* Close the policy handle */
         memset(&dceRpcBuf[0], 0, MAX_IN_BUF_SIZE);
         memset(&output_buf[0], 0, MAX_OUT_BUF_SIZE);
+        output_count = MAX_OUT_BUF_SIZE;
         offset = 0;
 
 #if 0
