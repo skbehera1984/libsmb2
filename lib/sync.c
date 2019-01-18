@@ -1312,6 +1312,7 @@ int smb2_list_shares(struct smb2_context *smb2,
         if (fh == NULL) {
                 smb2_set_error(smb2, "smb2_list_shares: failed to open SRVSVC pipe: %s",
                                smb2_get_error(smb2));
+                smb2_disconnect_share(smb2);
                 return -1;
         }
 
@@ -1330,24 +1331,34 @@ int smb2_list_shares(struct smb2_context *smb2,
                             ioctl_OUT, &ioctl_OUT_Cnt);
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed for BIND : %s", smb2_get_error(smb2));
+                smb2_close(smb2, fh);
+                smb2_disconnect_share(smb2);
                 return -1;
         }
 
         if (dcerpc_get_response_header(ioctl_OUT, ioctl_OUT_Cnt, &rsp_hdr) < 0) {
                 smb2_set_error(smb2, "failed to parse dcerpc response header");
+                smb2_close(smb2, fh);
+                smb2_disconnect_share(smb2);
                 return -1;
         }
 
         if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
                 if (dcerpc_get_bind_nack_response(ioctl_OUT, ioctl_OUT_Cnt, &nack) < 0) {
                         smb2_set_error(smb2, "failed to parse dcerpc BINDNACK response");
+                        smb2_close(smb2, fh);
+                        smb2_disconnect_share(smb2);
                         return -1;
                 }
                 smb2_set_error(smb2, "dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
+                smb2_close(smb2, fh);
+                smb2_disconnect_share(smb2);
                 return -1;
         } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
                 if (dcerpc_get_bind_ack_response(ioctl_OUT, ioctl_OUT_Cnt, &ack) < 0) {
                         smb2_set_error(smb2, "failed to parse dcerpc BINDACK response");
+                        smb2_close(smb2, fh);
+                        smb2_disconnect_share(smb2);
                         return -1;
                 }
                 /* save the max xmit and recv frag details */
@@ -1357,6 +1368,8 @@ int smb2_list_shares(struct smb2_context *smb2,
 
         if (sprintf(&serverName[0], "\\\\%s", server) < 0) {
                 smb2_set_error(smb2, "Failed to create NetrShareEnum request");
+                smb2_close(smb2, fh);
+                smb2_disconnect_share(smb2);
                 return -1;
         }
 
@@ -1397,7 +1410,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                                                        resumeHandle,
                                                        netShareEnumBuf+offset,
                                                        &payloadlen) < 0) {
-                        return -1;
+                        goto error;
                 }
 
                 offset += payloadlen;
@@ -1407,7 +1420,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 if (offset > max_xmit_frag) {
                         smb2_set_error(smb2, "smb2_list_shares: IOCTL Payload size is "
                                              "larger than max_xmit_frag");
-                        return -1;
+                        goto error;
                 }
 
                 status = smb2_ioctl(smb2, fh,
@@ -1418,7 +1431,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 if (status != SMB2_STATUS_SUCCESS) {
                         smb2_set_error(smb2, "smb2_list_shares: smb2_ioctl failed : %s",
                                        smb2_get_error(smb2));
-                        return -1;
+                        goto error;
                 }
                 offset = 0;
 
@@ -1426,7 +1439,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 sharesBuff = (uint8_t*) malloc(output_count);
                 if (sharesBuff == NULL) {
                         smb2_set_error(smb2, "Failed to allocate shares buffer");
-                        return -1;
+                        goto error;
                 }
                 memcpy(sharesBuff, &output_buf[0], output_count);
                 sharesBuffLen += output_count;
@@ -1434,8 +1447,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                 /* Response parsing */
                 if (dcerpc_parse_Operation_Response(smb2, sharesBuff, sharesBuffLen, &dceOpRes, &status) < 0) {
                         smb2_set_error(smb2,
-                                       "dcerpc_parse_Operation_Response failed : %s",
-                                       smb2_get_error(smb2));
+                                       "dcerpc_parse_Operation_Response failed : %x", status);
                         goto error;
                 }
 
@@ -1466,8 +1478,7 @@ int smb2_list_shares(struct smb2_context *smb2,
                                                             &dceOpRes2,
                                                             &status) < 0) {
                                 smb2_set_error(smb2,
-                                               "dcerpc_parse_Operation_Response -2 failed : %s",
-                                               smb2_get_error(smb2));
+                                               "dcerpc_parse_Operation_Response -2 failed : %x", status);
                                 goto error;
                         }
                         last_frag = dceOpRes2.dceRpcHdr.packet_flags & RPC_FLAG_LAST_FRAG;
@@ -1535,7 +1546,7 @@ error:
         /* close the pipe  & disconnect */
         smb2_close(smb2, fh);
         smb2_disconnect_share(smb2);
-        return-1;
+        return -1;
 }
 
 uint32_t
@@ -1975,6 +1986,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         if (fh == NULL) {
                 smb2_set_error(smb2, "smb2_lookUpSid: failed to open LSARPC pipe: %s",
                                smb2_get_error(smb2));
+                smb2_disconnect_share(smb2);
                 return -1;
         }
 
@@ -1992,25 +2004,25 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                             output_buf, &output_count);
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for bind: %s", smb2_get_error(smb2));
-                return -1;
+                goto error;
         }
 
         if (dcerpc_get_response_header(output_buf, output_count, &rsp_hdr) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response header");
-                return -1;
+                goto error;
         }
 
         if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDNACK) {
                 if (dcerpc_get_bind_nack_response(output_buf, output_count, &nack) < 0) {
                         smb2_set_error(smb2, "smb2_lookUpSid:failed to parse dcerpc BINDNACK response");
-                        return -1;
+                        goto error;
                 }
                 smb2_set_error(smb2, "smb2_lookUpSid:dcerpc BINDNACK reason : %s", dcerpc_get_reject_reason(nack.reject_reason));
-                return -1;
+                goto error;
         } else if (rsp_hdr.packet_type == RPC_PACKET_TYPE_BINDACK) {
                 if (dcerpc_get_bind_ack_response(output_buf, output_count, &ack) < 0) {
                         smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc BINDACK response");
-                        return -1;
+                        goto error;
                 }
                 /* save the max xmit and recv frag details */
                 max_xmit_frag = ack.max_xmit_frag;
@@ -2035,7 +2047,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
 
         if (offset > max_xmit_frag) {
                 smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
-                return -1;
+                goto error;
         }
 
         status = smb2_ioctl(smb2, fh,
@@ -2045,7 +2057,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                             output_buf, &output_count);
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for OpenPolicy2: %s", smb2_get_error(smb2));
-                return -1;
+                goto error;
         }
         if (dcerpc_parse_Operation_Response(smb2,
                                             output_buf,
@@ -2053,7 +2065,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                             &dceOpRes2,
                                             &status) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for OpenPolicy2 : %x", status);
-                return -1;
+                goto error;
         }
 
         offset = 0;
@@ -2064,7 +2076,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                         &pHandle,
                                         &status) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid: lsarpc_parse_OpenPolicy2Res failed : %x", status);
-                return -1;
+                goto error;
         }
 
         /* LookUp names now */
@@ -2079,7 +2091,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         if (lsarpc_create_LookUpNamesReq(smb2, &pHandle, user, domain,
                                          dceRpcBuf+offset, MAX_IN_BUF_SIZE-offset, &bytes_used) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid: Create LookupNames req failed");
-                return -1;
+                goto error;
         }
         offset += bytes_used;
 
@@ -2088,7 +2100,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
 
         if (offset > max_xmit_frag) {
                 smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
-                return -1;
+                goto error;
         }
 
         status = smb2_ioctl(smb2, fh,
@@ -2098,7 +2110,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                             output_buf, &output_count);
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for LookupNames : %s", smb2_get_error(smb2));
-                return -1;
+                goto error;
         }
         if (dcerpc_parse_Operation_Response(smb2,
                                             output_buf,
@@ -2106,7 +2118,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                             &dceOpRes2,
                                             &status) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid: failed to parse dcerpc response for LookupNames : %x", status);
-                return -1;
+                goto error;
         }
 
         offset = 0;
@@ -2117,7 +2129,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                         sid,
                                         &status) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid:lsarpc_parse_LookupNamesRes failed : %x", status);
-                return -1;
+                goto error;
         }
 
         /* Close the policy handle */
@@ -2138,7 +2150,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
 
         if (offset > max_xmit_frag) {
                 smb2_set_error(smb2, "smb2_lookUpSid: IOCTL Payload size is larger than max_xmit_frag");
-                return -1;
+                goto error;
         }
 
         status = smb2_ioctl(smb2, fh,
@@ -2149,7 +2161,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         if (status != SMB2_STATUS_SUCCESS) {
                 smb2_set_error(smb2, "smb2_lookUpSid: smb2_ioctl failed for close policy: %s",
                                smb2_get_error(smb2));
-                return -1;
+                goto error;
         }
         if (dcerpc_parse_Operation_Response(smb2,
                                             output_buf,
@@ -2157,7 +2169,7 @@ int smb2_lookUpSid(struct smb2_context *smb2,
                                             &dceOpRes2,
                                             &status) < 0) {
                 smb2_set_error(smb2, "smb2_lookUpSid:dcerpc_parse_Operation_Response failed : %x", status);
-                return -1;
+                goto error;
         }
 #endif
 
@@ -2165,4 +2177,15 @@ int smb2_lookUpSid(struct smb2_context *smb2,
         smb2_close(smb2, fh);
         smb2_disconnect_share(smb2);
         return 0;
+
+error:
+        /* close the pipe & disconnect */
+        smb2_close(smb2, fh);
+        smb2_disconnect_share(smb2);
+
+        if (*sid != NULL) {
+            free(*sid);
+        }
+
+        return -1;
 }
