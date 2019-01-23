@@ -75,6 +75,11 @@ static int wait_for_reply(struct smb2_context *smb2,
                 pfd.fd = smb2_get_fd(smb2);
                 pfd.events = smb2_which_events(smb2);
 
+                if (pfd.fd == -1) {
+                        smb2_set_error(smb2, "Socket Not Connected");
+                        return -1;
+                }
+
                 if (poll(&pfd, 1, 1000) < 0) {
                         smb2_set_error(smb2, "Poll failed");
                         return -1;
@@ -128,6 +133,15 @@ smb2_disconnect_share(struct smb2_context *smb2)
         struct sync_cb_data cb_data;
 
         cb_data.is_finished = 0;
+
+        /* check to see if connected or just need to close the fd */
+        if (smb2->is_connected != 1) {
+                if (smb2->fd != -1) {
+                        close(smb2->fd);
+                        smb2->fd = -1;
+                }
+                return SMB2_STATUS_SUCCESS;
+        }
 
         if (smb2_disconnect_share_async(smb2, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_disconnect_share_async failed");
