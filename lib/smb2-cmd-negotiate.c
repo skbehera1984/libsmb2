@@ -122,7 +122,7 @@ smb2_process_negotiate_fixed(struct smb2_context *smb2,
                 return -1;
         }
         pdu->payload = rep;
-               
+
         smb2_get_uint16(iov, 0, &struct_size);
         if (struct_size != SMB2_NEGOTIATE_REPLY_SIZE ||
             (struct_size & 0xfffe) != iov->len) {
@@ -132,7 +132,7 @@ smb2_process_negotiate_fixed(struct smb2_context *smb2,
                                (int)iov->len);
                 return -1;
         }
-        
+
         smb2_get_uint16(iov, 2, &rep->security_mode);
         smb2_get_uint16(iov, 4, &rep->dialect_revision);
         memcpy(rep->server_guid, iov->buf + 8, SMB2_GUID_SIZE);
@@ -148,7 +148,8 @@ smb2_process_negotiate_fixed(struct smb2_context *smb2,
         if (rep->security_buffer_length == 0) {
                 smb2_set_error(smb2, "No security buffer in Negotiate "
                                "Protocol response");
-                return -1;
+                /*return -1; some servers don't send a security buffer */
+                return 0;
         }
         if (rep->security_buffer_offset < SMB2_HEADER_SIZE +
             (SMB2_NEGOTIATE_REPLY_SIZE & 0xfffe)) {
