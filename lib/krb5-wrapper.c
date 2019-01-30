@@ -149,15 +149,26 @@ krb5_negotiate_reply(struct smb2_context *smb2,
         uint32_t maj, min;
         gss_buffer_desc user;
         char user_principal[2048];
-        char *nc_password = NULL;
-        gss_buffer_desc passwd;
         gss_OID_set_desc mechOidSet;
-        gss_OID_set_desc wantMech;
+
+        krb5_context    krb5_cctx = NULL;
+        krb5_ccache     krb5cache = NULL;
+        krb5_creds      krb5_ccreds;
+        krb5_principal  client_princ = NULL;
+        krb5_get_init_creds_opt *options = NULL;
 
         if (smb2->use_cached_creds) {
                 /* Validate the parameters */
-                if (domain == NULL || password == NULL) {
-                        smb2_set_error(smb2, "domain and password must be set while using krb5cc mode");
+                if (user_name == NULL) {
+                        smb2_set_error(smb2, "user_name must be provided while using krb5cc mode");
+                        return NULL;
+                }
+                if (domain == NULL) {
+                        smb2_set_error(smb2, "domain must be set while using krb5cc mode");
+                        return NULL;
+                }
+                if (password == NULL) {
+                        smb2_set_error(smb2, "password must be set while using krb5cc mode");
                         return NULL;
                 }
         }
@@ -211,81 +222,98 @@ krb5_negotiate_reply(struct smb2_context *smb2,
 
         /* TODO: the proper mechanism (SPNEGO vs NTLM vs KRB5) should be
          * selected based on the SMB negotiation flags */
-        auth_data->mech_type = &gss_mech_spnego;
+        auth_data->mech_type = &spnego_mech_krb5;
         auth_data->cred = GSS_C_NO_CREDENTIAL;
 
         /* Create creds for the user */
         mechOidSet.count = 1;
-        mechOidSet.elements = discard_const(&gss_mech_spnego);
+        mechOidSet.elements = discard_const(&spnego_mech_krb5);
 
         if (smb2->use_cached_creds) {
                 krb5_error_code ret = 0;
-                const char *cname = NULL;
-                krb5_context    krb5_cctx;
-                krb5_ccache     krb5_Ccache;
 
-                /* krb5 cache management */
                 ret = krb5_init_context(&krb5_cctx);
-                if (ret) {
+                if (ret)
+                {
                     smb2_set_error(smb2, "Failed to initialize krb5 context - %s", krb5_get_error_message(krb5_cctx, ret));
-                    return NULL;
+                    goto error;
                 }
-                ret = krb5_cc_new_unique(krb5_cctx, "MEMORY", NULL, &krb5_Ccache);
-                if (ret != 0) {
-                    smb2_set_error(smb2, "Failed to create krb5 credentials cache - %s", krb5_get_error_message(krb5_cctx, ret));
-                    return NULL;
+                memset(&krb5_ccreds, 0, sizeof(krb5_ccreds));
+
+                ret = krb5_set_default_realm(krb5_cctx, smb2->domain);
+                if (ret) {
+                    smb2_set_error(smb2, "Failed to set default realm - %s", krb5_get_error_message(krb5_cctx, ret));
+                    goto error;
                 }
-                cname = krb5_cc_get_name(krb5_cctx, krb5_Ccache);
-                if (cname == NULL) {
-                    smb2_set_error(smb2, "Failed to retrieve the credentials cache name");
-                    return NULL;
+                ret = krb5_parse_name_flags(krb5_cctx, user_name, 0, &client_princ);
+                if (ret) {
+                    smb2_set_error(smb2, "Failed to parse principal name - %s", krb5_get_error_message(krb5_cctx, ret));
+                    goto error;
+                }
+                ret = krb5_cc_new_unique(krb5_cctx, "MEMORY", NULL, &krb5cache);
+                if (ret) {
+                    smb2_set_error(smb2, "Failed create cache - %s", krb5_get_error_message(krb5_cctx, ret));
+                    goto error;
                 }
 
-                maj = gss_krb5_ccache_name(&min, cname, NULL);
+                ret = krb5_get_init_creds_opt_alloc(krb5_cctx, &options);
+                ret = krb5_get_init_creds_opt_set_out_ccache(krb5_cctx, options, krb5cache);
+                ret = krb5_get_init_creds_password(krb5_cctx, &krb5_ccreds,
+                                                   client_princ, password,
+                                                   NULL, NULL, 0, NULL, options);
+                if (ret != 0)
+                {
+                    smb2_set_error(smb2, "krb5_get_init_creds_password: Failed to init credentials - %d, %s", ret, krb5_get_error_message(krb5_cctx, ret));
+                    goto error;
+                }
+
+                maj = gss_krb5_import_cred(&min, krb5cache, client_princ, 0, &auth_data->cred);
                 if (maj != GSS_S_COMPLETE) {
-                        krb5_set_gss_error(smb2, "gss_krb5_ccache_name", maj, min);
-                        return NULL;
+                        krb5_set_gss_error(smb2, "gss_krb5_import_cred ", maj, min);
+                        goto error;
                 }
-
-                nc_password = strdup(password);
-                passwd.value = nc_password;
-                passwd.length = strlen(nc_password);
-
-                maj = gss_acquire_cred_with_password(&min, auth_data->user_name, &passwd, 0,
-                                                     &mechOidSet, GSS_C_INITIATE, &auth_data->cred,
-                                                     NULL, NULL);
         } else {
                 maj = gss_acquire_cred(&min, auth_data->user_name, 0,
                                        &mechOidSet, GSS_C_INITIATE,
                                        &auth_data->cred, NULL, NULL);
-        }
-
-        if (maj != GSS_S_COMPLETE) {
-                krb5_set_gss_error(smb2, "gss_acquire_cred", maj, min);
-                return NULL;
-        }
-
-        if (smb2->sec != SMB2_SEC_UNDEFINED) {
-                wantMech.count = 1;
-                if (smb2->sec == SMB2_SEC_KRB5) {
-                        wantMech.elements = discard_const(&spnego_mech_krb5);
-                } else if (smb2->sec == SMB2_SEC_NTLMSSP) {
-                        wantMech.elements = discard_const(&spnego_mech_ntlmssp);
-                }
-
-                maj = gss_set_neg_mechs(&min, auth_data->cred, &wantMech);
-                if (GSS_ERROR(maj)) {
-                        krb5_set_gss_error(smb2, "gss_set_neg_mechs", maj, min);
-                        return NULL;
+                if (maj != GSS_S_COMPLETE) {
+                        krb5_set_gss_error(smb2, "gss_acquire_cred", maj, min);
+                        goto error;
                 }
         }
 
-        if (nc_password) {
-                free(nc_password);
-                nc_password = NULL;
+        if (client_princ != NULL) {
+          krb5_free_principal(krb5_cctx, client_princ);
+        }
+
+        if (krb5cache != NULL) {
+            krb5_cc_close(krb5_cctx, krb5cache);
+        }
+        if (options != NULL) {
+            krb5_get_init_creds_opt_free(krb5_cctx, options);
+        }
+        if (krb5_cctx != NULL) {
+            krb5_free_context(krb5_cctx);
         }
 
         return auth_data;
+
+error:
+    if (client_princ != NULL) {
+      krb5_free_principal(krb5_cctx, client_princ);
+    }
+
+    if (krb5cache != NULL) {
+        krb5_cc_close(krb5_cctx, krb5cache);
+    }
+    if (options != NULL) {
+        krb5_get_init_creds_opt_free(krb5_cctx, options);
+    }
+    if (krb5_cctx != NULL) {
+        krb5_free_context(krb5_cctx);
+    }
+
+    return NULL;
 }
 
 int
