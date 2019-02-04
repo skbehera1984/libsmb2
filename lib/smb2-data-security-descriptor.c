@@ -815,6 +815,12 @@ free_sid(struct smb2_context *smb2, struct smb2_sid *sid)
 {
         if (!sid)
             return;
+
+        sid->revision = 0;
+        memset(&(sid->id_auth[0]), 0, SID_ID_AUTH_LEN);
+        memset(&(sid->sub_auth[0]), 0, sid->sub_auth_count);
+        sid->sub_auth_count = 0;
+
         free(sid);
 }
 
@@ -837,6 +843,12 @@ free_ace(struct smb2_context *smb2, struct smb2_ace *ace)
             ace->raw_data = NULL;
         }
 
+        ace->ace_type = 0; ace->ace_flags = 0; ace->ace_size = 0;
+        ace->mask = 0; ace->flags = 0; ace->ad_len = 0; ace->raw_len = 0;
+        memset(&(ace->object_type[0]), 0, SMB2_OBJECT_TYPE_SIZE);
+        memset(&(ace->inherited_object_type[0]), 0, SMB2_OBJECT_TYPE_SIZE);
+        ace->next = NULL;
+
         free(ace);
 }
 
@@ -848,9 +860,15 @@ free_acl(struct smb2_context *smb2, struct smb2_acl *acl)
             return;
 
         ace = acl->aces;
-        for (; ace; ace = ace->next) {
-            free_ace(smb2, ace);
+        while(ace !=NULL) {
+            struct smb2_ace *tmp = ace;
+            ace = ace->next;
+            tmp->next = NULL;
+            free_ace(smb2, tmp);
         }
+
+        acl->revision = 0; acl->acl_size = 0; acl->ace_count = 0;
+        acl->aces = NULL;
         free(acl);
 }
 
@@ -874,6 +892,7 @@ smb2_free_security_descriptor(struct smb2_context *smb2,
                 sd->dacl = NULL;
         }
 
+        sd->revision = 0; sd->control = 0;
         free(sd);
 }
 
