@@ -421,8 +421,8 @@ srvsvc_create_NetrShareEnumRequest(struct smb2_context *smb2,
         offset += size_used;
 
         /* padding of 0 or more bytes are needed after the name buf */
-        if ((size_used & 0x07) != 0) {
-                padlen = 8 - (size_used & 0x07);
+        if ((size_used & 0x03) != 0) {
+                padlen = 4 - (size_used & 0x03);
                 offset += padlen;
         }
 
