@@ -184,6 +184,9 @@ decode_sid(struct smb2_context *smb2, struct smb2_iovec *v)
                 return NULL;
         }
 
+        /* Initilize the sid struct */
+        memset(sid, 0, 8+(sub_auth_count * sizeof(uint32_t)));
+
         sid->revision = revision;
         sid->sub_auth_count = sub_auth_count;
         memcpy(&sid->id_auth[0], &v->buf[2], SID_ID_AUTH_LEN);
@@ -220,6 +223,10 @@ decode_ace(struct smb2_context *smb2, struct smb2_iovec *vec)
                 smb2_set_error(smb2, "failed to allocate ace.");
                 return NULL;
         }
+
+        /*Initialize the ACE struct */
+        memset(ace, 0, sizeof(struct smb2_ace));
+        ace->next = NULL; ace->sid = NULL; ace->ad_data = NULL; ace->raw_data = NULL;
 
         ace->ace_type  = ace_type;
         ace->ace_flags = ace_flags;
@@ -362,6 +369,10 @@ decode_acl(struct smb2_context *smb2, struct smb2_iovec *vec)
                 return NULL;
         }
 
+        /* Initialize ACL struct */
+        memset(acl, 0, sizeof(struct smb2_acl));
+        acl->aces = NULL;
+
         acl->revision  = revision;
         acl->acl_size  = acl_size;
         acl->ace_count = ace_count;
@@ -370,7 +381,6 @@ decode_acl(struct smb2_context *smb2, struct smb2_iovec *vec)
         v.len -= 8;
         v.buf = &v.buf[8];
 
-        acl->aces = NULL;
         for (i = 0; i < ace_count; i++) {
                 struct smb2_ace *ace = decode_ace(smb2, &v);
 
@@ -401,6 +411,11 @@ smb2_decode_security_descriptor(struct smb2_context *smb2,
 {
         struct smb2_iovec v;
         uint32_t offset_owner, offset_group, offset_sacl, offset_dacl;
+
+        /* Initilize smb2_security_descriptor */
+        sd->revision = 0;
+        sd->control  = 0;
+        sd->owner    = NULL; sd->group = NULL; sd->dacl = NULL;
 
         if (vec->len < 20) {
                 return -1;
