@@ -104,10 +104,19 @@ struct auth_data {
 void
 ntlmssp_destroy_context(struct auth_data *auth)
 {
-        free(auth->ntlm_buf);
-        free(auth->buf);
-        free(auth);
+        if (auth == NULL) {
+                return;
+        }
+
+        if (auth->ntlm_buf) {
+                free(auth->ntlm_buf); auth->ntlm_buf = NULL;
+        }
+        if (auth->buf) {
+                free(auth->buf); auth->buf = NULL;
+        }
+
         memset(auth->exported_session_key, 0, SMB2_KEY_SIZE);
+        free(auth);
 }
 
 struct auth_data *
@@ -192,7 +201,9 @@ static int
 ntlm_challenge_message(struct auth_data *auth_data, unsigned char *buf,
                        int len)
 {
-        free(auth_data->ntlm_buf);
+        if (auth_data->ntlm_buf) {
+                free(auth_data->ntlm_buf); auth_data->ntlm_buf = NULL;
+        }
         auth_data->ntlm_len = len;
         auth_data->ntlm_buf = malloc(auth_data->ntlm_len);
         if (auth_data->ntlm_buf == NULL) {
@@ -513,8 +524,9 @@ ntlmssp_generate_blob(struct smb2_context *smb2, struct auth_data *auth_data,
                       unsigned char *input_buf, int input_len,
                       unsigned char **output_buf, uint16_t *output_len)
 {
-        free(auth_data->buf);
-        auth_data->buf = NULL;
+        if (auth_data->buf) {
+                free(auth_data->buf); auth_data->buf = NULL;
+        }
         auth_data->len = 0;
         auth_data->allocated = 0;
 

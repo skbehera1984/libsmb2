@@ -263,6 +263,7 @@ void smb2_destroy_context(struct smb2_context *smb2)
         smb2->session_key = NULL;
 
         free(discard_const(smb2->user));
+        free(discard_const(smb2->password));
         free(discard_const(smb2->server));
         free(discard_const(smb2->share));
         if (smb2->utf8_unc) {
@@ -432,6 +433,7 @@ void smb2_set_password(struct smb2_context *smb2, const char *password)
 {
         if (smb2->password) {
                 free(discard_const(smb2->password));
+                smb2->password = NULL;
         }
         smb2->password = strdup(password);
 }

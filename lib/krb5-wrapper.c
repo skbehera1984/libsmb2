@@ -79,6 +79,7 @@ krb5_free_auth_data(struct private_auth_data *auth)
         }
 
         gss_release_buffer(&min, &auth->output_token);
+        gss_release_cred(&min, &auth->cred);
 
         if (auth->target_name) {
                 gss_release_name(&min, &auth->target_name);
