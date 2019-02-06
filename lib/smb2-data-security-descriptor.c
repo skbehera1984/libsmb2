@@ -232,13 +232,6 @@ decode_ace(struct smb2_context *smb2, struct smb2_iovec *vec)
         ace->ace_flags = ace_flags;
         ace->ace_size  = ace_size;
 
-        /* set the fields to NULL */
-        ace->ad_len = 0;
-        ace->raw_len = 0;
-        ace->sid = NULL;
-        ace->ad_data = NULL;
-        ace->raw_data = NULL;
-
         /* Skip past the header */
         if (ace_size < 4) {
                 smb2_set_error(smb2, "not enough data for ace data.");
