@@ -200,9 +200,15 @@ typedef struct _smb2dir {
         int index;
 } smb2dir;
 
+/* @ free_me - for compound requests the last CB will free async_cb_data.
+   But for single calls the current CB must free it
+
+   only needed for smb2_fgetinfo_async and smb2_fsetinfo_async
+ */
 typedef struct _async_cb_data {
         smb2_command_cb cb;
         void            *cb_data;
+        uint8_t         free_me;
         uint32_t        status;
         struct smb2fh   *fh;
         const char      *pattern;
@@ -1728,6 +1734,9 @@ getinfo_query_cb(struct smb2_context *smb2, uint32_t status,
         }
 
         getinfo_data->cb(smb2, SMB2_STATUS_SUCCESS, NULL, getinfo_data->cb_data);
+        if (getinfo_data->free_me == 1) {
+                free(getinfo_data);
+        }
         if (rep->output_buffer != NULL) {
                 smb2_free_data(smb2, rep->output_buffer); rep->output_buffer = NULL;
         }
@@ -1760,6 +1769,7 @@ smb2_fgetinfo_async(struct smb2_context *smb2,
                 return -1;
         }
         memset(getinfo_data, 0, sizeof(async_cb_data));
+        getinfo_data->free_me = 1;
 
         getinfo_data->cb      = cb;
         getinfo_data->cb_data = cb_data;
@@ -2170,6 +2180,9 @@ setinfo_set_cb(struct smb2_context *smb2, uint32_t status,
         }
 
         setinfoData->cb(smb2, status, NULL, setinfoData->cb_data);
+        if (setinfoData->free_me == 1) {
+                free(setinfoData);
+        }
 }
 
 static void
@@ -2228,6 +2241,7 @@ smb2_fsetinfo_async(struct smb2_context *smb2,
                 return -1;
         }
         memset(setinfoData, 0, sizeof(async_cb_data));
+        setinfoData->free_me = 1;
         setinfoData->cb = cb;
         setinfoData->cb_data = cb_data;
 
