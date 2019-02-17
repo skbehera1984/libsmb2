@@ -68,6 +68,7 @@ smb2_stat
 smb2_stat_async
 smb2_statvfs
 smb2_statvfs_async
+smb2_fsync
 smb2_telldir
 smb2_truncate
 smb2_rename
@@ -112,3 +113,8 @@ smb2_decode_security_descriptor
 smb2_decode_security_descriptor_buf
 smb2_encode_security_descriptor
 smb2_free_security_descriptor
+smb2_set_ntstatus
+smb2_get_ntstatus
+smb2_get_max_read_size
+smb2_get_max_write_size
+smb2_get_max_transact_size
