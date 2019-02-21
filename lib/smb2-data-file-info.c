@@ -240,14 +240,16 @@ smb2_decode_file_stream_info(struct smb2_context *smb2,
 {
         uint32_t offset = 0;
         struct smb2_file_stream_info *node = info;
-        struct smb2_file_stream_info *next_node = NULL;
         struct smb2_file_full_stream_info full_stream_info;
+
+        info->next = NULL;
 
         do {
                 struct smb2_iovec tmp_vec;
 
                 /* Make sure we do not go beyond end of vector */
                 if (offset >= vec->len) {
+                        smb2_free_file_stream_info(smb2, info);
                         smb2_set_error(smb2, "Malformed query reply.");
                         return -1;
                 }
@@ -255,13 +257,23 @@ smb2_decode_file_stream_info(struct smb2_context *smb2,
                 tmp_vec.buf = &vec->buf[offset];
                 tmp_vec.len = vec->len - offset;
 
-                smb2_decode_file_full_stream_info(smb2,
-                                                  &full_stream_info, &tmp_vec);
+                memset(&full_stream_info, 0, sizeof(struct smb2_file_full_stream_info));
+                if (smb2_decode_file_full_stream_info(smb2,
+                                                      &full_stream_info,
+                                                      &tmp_vec) < 0) {
+                        smb2_free_file_stream_info(smb2, info);
+                        smb2_set_error(smb2, "Failed to decode full_stream_info");
+                        return -1;
+                }
 
-                memcpy(node->name, full_stream_info.stream_name,
-                       full_stream_info.stream_name_length);
+                memset(node->name, 0, 4096);
+                memcpy(&(node->name[0]),
+                       full_stream_info.stream_name,
+                       ((full_stream_info.stream_name_length)/2));
+
                 free(full_stream_info.stream_name);
                 full_stream_info.stream_name = NULL;
+
                 node->size = full_stream_info.stream_size;
                 node->allocation_size = full_stream_info.stream_allocation_size;
                 node->next = NULL;
@@ -269,6 +281,7 @@ smb2_decode_file_stream_info(struct smb2_context *smb2,
                 offset += full_stream_info.next_entry_offset;
                 if ( full_stream_info.next_entry_offset != 0 )
                 {
+                       struct smb2_file_stream_info *next_node = NULL;
                        size_t len = sizeof(struct smb2_file_stream_info);
                        next_node = smb2_alloc_init(smb2, len);
                         if (next_node == NULL) {
@@ -297,14 +310,13 @@ smb2_decode_file_full_stream_info(struct smb2_context *smb2,
         smb2_get_uint64(vec, 8, &info->stream_size);
         smb2_get_uint64(vec, 16, &info->stream_allocation_size);
 
-        info->stream_name = (uint8_t*)malloc(info->stream_name_length+1);
-        if ( info->stream_name == NULL ) {
-                smb2_set_error(smb2, "Failed to allocate stream name");
+        info->stream_name = NULL;
+        info->stream_name = (uint8_t*)ucs2_to_utf8((uint16_t *)(vec->buf + 24),
+                                                   (info->stream_name_length/2));
+        if (info->stream_name == NULL) {
+                smb2_set_error(smb2, "Failed to allocate memory for stream name");
                 return -1;
         }
-        memset(info->stream_name, 0, info->stream_name_length+1);
-        info->stream_name = (uint8_t*)ucs2_to_utf8((uint16_t *)(vec->buf + 24),
-                            info->stream_name_length);
 
         return 0;
 }
