@@ -1709,6 +1709,7 @@ smb2_getinfo_extended(struct smb2_context *smb2,
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+        info.u_info.extended_info = NULL;
 
         if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
@@ -1720,7 +1721,9 @@ smb2_getinfo_extended(struct smb2_context *smb2,
                 return -1;
         }
 
-        *extended_info = info.u_info.extended_info;
+        if (cb_data.status == SMB2_STATUS_SUCCESS) {
+                *extended_info = info.u_info.extended_info;
+        }
         return cb_data.status;
 }
 
@@ -1741,6 +1744,7 @@ smb2_fgetinfo_extended(struct smb2_context *smb2,
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_FULL_EA_INFORMATION;
+        info.u_info.extended_info = NULL;
 
         if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
@@ -1752,7 +1756,9 @@ smb2_fgetinfo_extended(struct smb2_context *smb2,
                 return -1;
         }
 
-        *extended_info = info.u_info.extended_info;
+        if (cb_data.status == SMB2_STATUS_SUCCESS) {
+                *extended_info = info.u_info.extended_info;
+        }
         return cb_data.status;
 }
 
@@ -1895,6 +1901,7 @@ smb2_getinfo_stream(struct smb2_context *smb2,
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
+        info.u_info.stream_info = NULL;
 
         if (smb2_getinfo_async(smb2, path, &info, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_getinfo_async failed - %s",
@@ -1906,7 +1913,9 @@ smb2_getinfo_stream(struct smb2_context *smb2,
                 return -1;
         }
 
-        *stream_info = info.u_info.stream_info;
+        if (cb_data.status == SMB2_STATUS_SUCCESS) {
+                *stream_info = info.u_info.stream_info;
+        }
         return cb_data.status;
 }
 
@@ -1927,6 +1936,7 @@ smb2_fgetinfo_stream(struct smb2_context *smb2,
 
         info.info_type = SMB2_0_INFO_FILE;
         info.file_info_class = SMB2_FILE_STREAM_INFORMATION;
+        info.u_info.stream_info = NULL;
 
         if (smb2_fgetinfo_async(smb2, fh, &info, sync_cb, &cb_data) != 0) {
                 smb2_set_error(smb2, "smb2_fgetinfo_async failed - %s",
@@ -1938,7 +1948,9 @@ smb2_fgetinfo_stream(struct smb2_context *smb2,
                 return -1;
         }
 
-        *stream_info = info.u_info.stream_info;
+        if (cb_data.status == SMB2_STATUS_SUCCESS) {
+                *stream_info = info.u_info.stream_info;
+        }
         return cb_data.status;
 }
 
