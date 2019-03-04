@@ -86,7 +86,7 @@ smb2_cmd_negotiate_async(struct smb2_context *smb2,
                          smb2_command_cb cb, void *cb_data)
 {
         struct smb2_pdu *pdu;
-        
+
         pdu = smb2_allocate_pdu(smb2, SMB2_NEGOTIATE, cb, cb_data);
         if (pdu == NULL) {
                 return NULL;
@@ -96,7 +96,7 @@ smb2_cmd_negotiate_async(struct smb2_context *smb2,
                 smb2_free_pdu(smb2, pdu);
                 return NULL;
         }
-        
+
         if (smb2_pad_to_64bit(smb2, &pdu->out) != 0) {
                 smb2_free_pdu(smb2, pdu);
                 return NULL;

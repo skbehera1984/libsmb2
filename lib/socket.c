@@ -597,7 +597,7 @@ smb2_connect_async(struct smb2_context *smb2, const char *server,
         /* ipv6 in [...] form ? */
         if (host[0] == '[') {
                 char *str;
-                
+
                 host++;
                 str = strchr(host, ']');
                 if (str == NULL) {
@@ -652,7 +652,7 @@ smb2_connect_async(struct smb2_context *smb2, const char *server,
         smb2->connect_cb   = cb;
         smb2->connect_data = private_data;
 
-      
+
 	smb2->fd = socket(family, SOCK_STREAM, 0);
 	if (smb2->fd == -1) {
 		smb2_set_error(smb2, "Failed to open smb2 socket. "
@@ -662,7 +662,7 @@ smb2_connect_async(struct smb2_context *smb2, const char *server,
 
 	set_nonblocking(smb2->fd);
 	set_tcp_sockopt(smb2->fd, TCP_NODELAY, 1);
-        
+
 	if (connect(smb2->fd, (struct sockaddr *)&ss, socksize) != 0
 #ifndef _MSC_VER
 		  && errno != EINPROGRESS) {

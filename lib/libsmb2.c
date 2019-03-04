@@ -494,6 +494,7 @@ smb2_free_auth_data(struct smb2_context *smb2)
                         ntlmssp_destroy_context(smb2->auth_data);
                 }
         }
+        smb2->auth_data = NULL;
 }
 
 
@@ -699,7 +700,7 @@ negotiate_cb(struct smb2_context *smb2, uint32_t status,
                                status, nterror_to_str(status),
                                smb2_get_error(smb2));
                 negotiate_data->cb(smb2, status, NULL, negotiate_data->cb_data);
-                smb2_free_auth_data(smb2);
+                free(negotiate_data);
                 return;
         }
 
@@ -719,7 +720,7 @@ negotiate_cb(struct smb2_context *smb2, uint32_t status,
 #if !defined(HAVE_OPENSSL_LIBS)
                 smb2_set_error(smb2, "Signing Required by server. Not yet implemented");
                 negotiate_data->cb(smb2, SMB2_STATUS_NOT_SUPPORTED, NULL, negotiate_data->cb_data);
-                smb2_free_auth_data(smb2);
+                free(negotiate_data);
                 return;
 #endif
                 smb2->signing_required = 1;
@@ -741,7 +742,7 @@ negotiate_cb(struct smb2_context *smb2, uint32_t status,
         if (smb2->auth_data == NULL) {
                 smb2_close_context(smb2);
                 negotiate_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, negotiate_data->cb_data);
-                smb2_free_auth_data(smb2);
+                free(negotiate_data);
                 return;
         }
 
@@ -749,6 +750,7 @@ negotiate_cb(struct smb2_context *smb2, uint32_t status,
                 smb2_close_context(smb2);
                 negotiate_data->cb(smb2, SMB2_STATUS_INTERNAL_ERROR, NULL, negotiate_data->cb_data);
                 smb2_free_auth_data(smb2);
+                free(negotiate_data);
                 return;
         }
 }
@@ -764,7 +766,7 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
         if (status != 0) {
                 smb2_set_error(smb2, "Socket connect failed with %d", status);
                 conn_data->cb(smb2, status, NULL, conn_data->cb_data);
-                smb2_free_auth_data(smb2);
+                free(conn_data);
                 return;
         }
 
@@ -813,7 +815,7 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
         pdu = smb2_cmd_negotiate_async(smb2, &req, negotiate_cb, conn_data);
         if (pdu == NULL) {
                 conn_data->cb(smb2, SMB2_STATUS_NO_MEMORY, NULL, conn_data->cb_data);
-                smb2_free_auth_data(smb2);
+                free(conn_data);
                 return;
         }
         smb2_queue_pdu(smb2, pdu);
@@ -852,8 +854,8 @@ smb2_connect_share_async(struct smb2_context *smb2,
                 free(smb2->utf8_unc);
         }
         if (asprintf(&smb2->utf8_unc, "\\\\%s\\%s", smb2->server, smb2->share) < 0) {
-                smb2_free_auth_data(smb2);
                 smb2_set_error(smb2, "Failed to allocate unc string.");
+                free(conn_data);
                 return -ENOMEM;
         }
 
@@ -862,7 +864,7 @@ smb2_connect_share_async(struct smb2_context *smb2,
         }
         smb2->ucs2_unc = utf8_to_ucs2(smb2->utf8_unc);
         if (smb2->ucs2_unc == NULL) {
-                smb2_free_auth_data(smb2);
+                free(conn_data);
                 smb2_set_error(smb2, "Count not convert UNC:[%s] into UCS2",
                                smb2->utf8_unc);
                 return -ENOMEM;
@@ -872,7 +874,7 @@ smb2_connect_share_async(struct smb2_context *smb2,
         conn_data->cb_data = cb_data;
 
         if (smb2_connect_async(smb2, server, connect_cb, conn_data) != 0) {
-                smb2_free_auth_data(smb2);
+                free(conn_data);
                 return -ENOMEM;
         }
 
