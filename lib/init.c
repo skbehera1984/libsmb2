@@ -226,6 +226,7 @@ struct smb2_context *smb2_init_context(void)
         memset(smb2->signing_key, 0, SMB2_KEY_SIZE);
 
         smb2->ntstatus = SMB2_STATUS_SUCCESS;
+        smb2->userInBackUpOperatorsGrp = 0;
 
         return smb2;
 }
@@ -467,4 +468,14 @@ uint32_t smb2_get_ntstatus(struct smb2_context *smb2)
 void smb2_set_ntstatus(struct smb2_context *smb2, uint32_t sts)
 {
         smb2->ntstatus = sts;
+}
+
+void smb2_set_usr_in_backUpOpsGrp(struct smb2_context *smb2)
+{
+        smb2->userInBackUpOperatorsGrp = 1;
+}
+
+void smb2_set_usr_not_in_backUpOpsGrp(struct smb2_context *smb2)
+{
+        smb2->userInBackUpOperatorsGrp = 0;
 }

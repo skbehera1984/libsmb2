@@ -1031,6 +1031,9 @@ smb2_open_file_async(struct smb2_context *smb2,
             && (create_disposition == SMB2_FILE_CREATE)) {
                 create_data->acb_data_U.cr_data.needToClose = 1;
         }
+        if (smb2->userInBackUpOperatorsGrp == 1) {
+                create_options |= SMB2_FILE_OPEN_FOR_BACKUP_INTENT;
+        }
 
         // TODO - is this needed?
         //create_options |= SMB2_FILE_NON_DIRECTORY_FILE;
@@ -1847,6 +1850,10 @@ smb2_getinfo_async(struct smb2_context *smb2,
         cr_req.create_options = 0;
         cr_req.name = path;
 
+        if (smb2->userInBackUpOperatorsGrp == 1) {
+                cr_req.create_options |= SMB2_FILE_OPEN_FOR_BACKUP_INTENT;
+        }
+
         pdu = smb2_cmd_create_async(smb2, &cr_req, getinfo_create_cb, getinfo_data);
         if (pdu == NULL) {
                 smb2_set_error(smb2, "Failed to create create command");
@@ -2350,6 +2357,10 @@ smb2_setinfo_async(struct smb2_context *smb2,
         cr_req.create_disposition = SMB2_FILE_OPEN;
         cr_req.create_options = 0;
         cr_req.name = path;
+
+        if (smb2->userInBackUpOperatorsGrp == 1) {
+                cr_req.create_options |= SMB2_FILE_OPEN_FOR_BACKUP_INTENT;
+        }
 
         pdu = smb2_cmd_create_async(smb2, &cr_req, setinfo_create_cb, setinfoData);
         if (pdu == NULL) {

@@ -184,6 +184,8 @@ struct smb2_context {
 
         uint32_t ntstatus;
         char error_string[MAX_ERROR_SIZE];
+
+        uint8_t userInBackUpOperatorsGrp;
 };
 
 #define SMB2_MAX_PDU_SIZE 16*1024*1024

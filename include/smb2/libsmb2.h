@@ -1288,6 +1288,9 @@ int smb2_encode_security_descriptor(struct smb2_context *smb2,
 void smb2_free_security_descriptor(struct smb2_context *smb2,
                                    struct smb2_security_descriptor *sd);
 
+void smb2_set_usr_in_backUpOpsGrp(struct smb2_context *smb2);
+void smb2_set_usr_not_in_backUpOpsGrp(struct smb2_context *smb2);
+
 #ifdef __cplusplus
 }
 #endif
