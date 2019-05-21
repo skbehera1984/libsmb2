@@ -424,6 +424,10 @@ smb2dir *smb2_querydir(struct smb2_context *smb2,
                        const char *path,
                        const char* pattern);
 
+smb2dir *smb2_fquerydir(struct smb2_context *smb2,
+                        struct smb2fh *fh,
+                        const char* pattern);
+
 /*
  * closedir()
  */

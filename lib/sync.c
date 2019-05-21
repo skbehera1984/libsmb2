@@ -204,6 +204,39 @@ smb2dir *smb2_querydir(struct smb2_context *smb2,
         return cb_data.ptr;
 }
 
+smb2dir *
+smb2_fquerydir(struct smb2_context *smb2,
+               struct smb2fh *fh,
+               const char* pattern)
+{
+        struct sync_cb_data cb_data;
+        cb_data.is_finished = 0;
+
+        if (smb2->is_connected == 0)
+        {
+            smb2_set_error(smb2, "Not Connected to Server");
+            return NULL;
+        }
+
+        if (fh == NULL) {
+                smb2_set_error(smb2, "Directory NOT opened to query");
+                return NULL;
+        }
+
+        if (smb2_querydir_async(smb2, fh, pattern, sync_cb, &cb_data) != 0) {
+                smb2_set_error(smb2, "smb2_fquerydir:smb2_querydir_async failed");
+                return NULL;
+        }
+
+        if (wait_for_reply(smb2, &cb_data) < 0) {
+                return NULL;
+        }
+
+        smb2_set_ntstatus(smb2, cb_data.status);
+
+        return cb_data.ptr;
+}
+
 /*
  * open()
  */
