@@ -951,7 +951,7 @@ open_cb(struct smb2_context *smb2, uint32_t status,
         struct smb2_create_reply *rep = command_data;
 
         if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "SMB2_CREATE failed - %s", smb2_get_error(smb2));
+                smb2_set_error(smb2, "SMB2_CREATE failed - %s, %s", smb2_get_error(smb2), nterror_to_str(status));
                 create_data->cb(smb2, status, NULL, create_data->cb_data);
                 free_smb2fh(fh);
                 free(create_data);
