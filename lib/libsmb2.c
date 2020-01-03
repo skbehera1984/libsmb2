@@ -778,10 +778,11 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
         if (smb2->sec == SMB2_SEC_KRB5) {
                 smb2->use_cached_creds = 1;
         }
-        smb2->version = SMB2_VERSION_0210;
+        smb2->version = SMB2_VERSION_MAX_302;
 
         switch (smb2->version) {
         case SMB2_VERSION_ANY:
+        case SMB2_VERSION_MAX_311:
                 req.dialect_count = 5;
                 req.dialects[0] = SMB2_VERSION_0202;
                 req.dialects[1] = SMB2_VERSION_0210;
@@ -790,6 +791,7 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
                 req.dialects[4] = SMB2_VERSION_0311;
                 break;
         case SMB2_VERSION_ANY2:
+        case SMB2_VERSION_MAX_210:
                 req.dialect_count = 2;
                 req.dialects[0] = SMB2_VERSION_0202;
                 req.dialects[1] = SMB2_VERSION_0210;
@@ -799,6 +801,19 @@ connect_cb(struct smb2_context *smb2, uint32_t status,
                 req.dialects[0] = SMB2_VERSION_0300;
                 req.dialects[1] = SMB2_VERSION_0302;
                 req.dialects[2] = SMB2_VERSION_0311;
+                break;
+        case SMB2_VERSION_MAX_300:
+                req.dialect_count = 3;
+                req.dialects[0] = SMB2_VERSION_0202;
+                req.dialects[1] = SMB2_VERSION_0210;
+                req.dialects[2] = SMB2_VERSION_0300;
+                break;
+        case SMB2_VERSION_MAX_302:
+                req.dialect_count = 4;
+                req.dialects[0] = SMB2_VERSION_0202;
+                req.dialects[1] = SMB2_VERSION_0210;
+                req.dialects[2] = SMB2_VERSION_0300;
+                req.dialects[3] = SMB2_VERSION_0302;
                 break;
         case SMB2_VERSION_0202:
         case SMB2_VERSION_0210:
